@@ -1,8 +1,8 @@
 /* Tidal Echo — service worker (offline shell + Web Push).
    IMPORTANT: bump CACHE on every front-end change, or installed clients keep the
    old shell (the precached index.html won't refresh until the SW reinstalls). */
-const AI_NAME = "Claude";          // push-title fallback; keep in sync with index.html CONFIG.AI_NAME
-const CACHE = "companion-v2-api-loop";
+const AI_NAME = "Hannes";          // push-title fallback; keep in sync with index.html CONFIG.AI_NAME
+const CACHE = "companion-v3-worker-gateway";
 const PRECACHE = [
   "./index.html",
   "./chat-light.webp", "./chat-harbor.webp",
@@ -27,7 +27,6 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (url.pathname.startsWith("/relay/")) return;          // never intercept the API / SSE
   if (e.request.mode === "navigate") {
     // network-first for the page → an online reload always gets the latest index.html
     e.respondWith(fetch(e.request, { cache: "reload" }).catch(() => caches.match("./index.html")));
@@ -48,8 +47,7 @@ self.addEventListener("fetch", (e) => {
 });
 
 // ── Web Push (VAPID) ──────────────────────────────
-// The relay sends a push when the AI replies and no PWA tab is holding the stream;
-// here we surface it on the lock screen.
+// Optional future notification hook; inference itself is handled in the page.
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; }
