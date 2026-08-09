@@ -1355,6 +1355,67 @@
   .conversation-empty{ padding:70px 20px; text-align:center; color:var(--text-faint); line-height:1.8; }
   .app.readonly-chat .composer{ opacity:.58; pointer-events:none; }
 
+  /* ── Local memory archive ── */
+  .memory-panel{
+    position:fixed; inset:0; z-index:200; pointer-events:none;
+    opacity:0; transform:translateX(100%);
+    transition:transform .38s var(--ease-soft), opacity .28s ease;
+  }
+  .memory-panel.open{ pointer-events:auto; opacity:1; transform:none; }
+  .memory-page{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    color:var(--text); background-color:var(--bg);
+    background-image:var(--menu-wall-default); background-size:cover; background-position:center;
+  }
+  .memory-page::before{ content:""; position:absolute; inset:0; background:var(--scrim); pointer-events:none; }
+  .memory-head{
+    position:relative; z-index:1; display:grid; grid-template-columns:44px 1fr 44px;
+    align-items:center; gap:8px;
+    padding:calc(env(safe-area-inset-top) + 12px) var(--side-pad) 12px;
+    border-bottom:1px solid var(--hairline); background:rgba(247,250,252,.72);
+    -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  }
+  :root[data-theme="harbor"] .memory-head{ background:rgba(244,242,239,.72); }
+  .memory-back,.memory-add{
+    width:40px; height:40px; border:0; border-radius:50%; padding:0;
+    display:grid; place-items:center; color:var(--text-soft); background:transparent; cursor:pointer;
+  }
+  .memory-back svg,.memory-add svg{ width:22px; height:22px; }
+  .memory-title{ margin:0; font-family:var(--font-en),var(--font-cn); font-size:clamp(22px,6vw,30px); font-weight:500; }
+  .memory-scroll{
+    position:relative; z-index:1; flex:1 1 auto; overflow-y:auto;
+    padding:18px var(--side-pad) calc(env(safe-area-inset-bottom) + 34px);
+  }
+  .memory-scroll::-webkit-scrollbar{ width:0; }
+  .memory-section{
+    margin-bottom:18px; padding:16px; border:1px solid var(--card-line); border-radius:18px;
+    background:var(--card-bg); box-shadow:var(--card-shadow);
+    -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  }
+  .memory-section-title{ margin:0 0 11px; font-size:13px; color:var(--text-soft); font-weight:600; letter-spacing:.02em; }
+  .memory-textarea{
+    display:block; width:100%; min-height:150px; resize:vertical; border:1px solid var(--field-line);
+    border-radius:13px; padding:11px 12px; color:var(--text); background:var(--field-bg);
+    font:400 14px/1.6 var(--font-cn); outline:none;
+  }
+  .memory-textarea:focus{ border-color:var(--accent); }
+  .memory-save-hint{ min-height:18px; margin-top:7px; color:var(--text-faint); font-size:11px; }
+  .memory-editor{ display:none; margin-bottom:14px; }
+  .memory-editor.open{ display:block; }
+  .memory-editor-actions,.memory-entry-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:9px; }
+  .memory-small-btn{
+    border:1px solid var(--hairline); border-radius:10px; padding:6px 11px;
+    color:var(--text-soft); background:rgba(255,255,255,.34); font:inherit; font-size:12px; cursor:pointer;
+  }
+  .memory-small-btn.primary{ color:var(--accent-fg); background:var(--accent); border-color:transparent; }
+  .memory-small-btn.danger{ color:#a8565a; }
+  .memory-entry{ padding:14px 2px; border-top:1px solid var(--hairline); }
+  .memory-entry:first-child{ border-top:0; }
+  .memory-entry-id{ margin-bottom:7px; color:var(--text-faint); font-size:11px; font-family:ui-monospace,"SF Mono",Menlo,monospace; }
+  .memory-entry-content{ color:var(--text); font-size:14px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .memory-entry-edit{ margin-top:10px; }
+  .memory-empty{ padding:32px 8px; text-align:center; color:var(--text-faint); line-height:1.7; }
+
   /* ── Voice call (speaking overlay · 假按键 / 纯 UI,后端以后接) ── */
   .call-overlay{
     position: fixed; inset: 0; z-index: 150;
@@ -2183,6 +2244,39 @@
   </div>
 </div>
 
+<!-- ── Memory archive (client-side only) ── -->
+<div class="memory-panel hidden" id="memoryPanel" role="dialog" aria-modal="true" aria-label="Memory">
+  <div class="memory-page">
+    <header class="memory-head">
+      <button class="memory-back" id="memoryBack" type="button" aria-label="返回主页">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h2 class="memory-title">Memory</h2>
+      <button class="memory-add" id="memoryAdd" type="button" aria-label="添加记忆" title="添加记忆">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </header>
+    <div class="memory-scroll">
+      <section class="memory-section">
+        <h3 class="memory-section-title">System Prompt</h3>
+        <textarea class="memory-textarea" id="systemPromptInput" placeholder="Write the system prompt here…"></textarea>
+        <div class="memory-save-hint" id="systemPromptHint"></div>
+      </section>
+      <section class="memory-section">
+        <h3 class="memory-section-title">Memories</h3>
+        <div class="memory-editor" id="memoryNewEditor">
+          <textarea class="memory-textarea" id="memoryNewContent" placeholder="Write a new memory…"></textarea>
+          <div class="memory-editor-actions">
+            <button class="memory-small-btn" id="memoryNewCancel" type="button">Cancel</button>
+            <button class="memory-small-btn primary" id="memoryNewSave" type="button">Save</button>
+          </div>
+        </div>
+        <div id="memoryList"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
 <!-- ── Voice call (speaking overlay · 假按键,纯 UI) ── -->
 <div class="call-overlay hidden" id="callOverlay" aria-hidden="true">
   <div class="call-mini" id="callMini">
@@ -2360,6 +2454,10 @@ const brainSeg = $("#brainSeg"), brainHint = $("#brainHint");
 const conversationPanel = $("#conversationPanel"), conversationList = $("#conversationList");
 const conversationBack = $("#conversationBack"), conversationAdd = $("#conversationAdd");
 const conversationImport = $("#conversationImport"), conversationImportInput = $("#conversationImportInput");
+const memoryPanel = $("#memoryPanel"), memoryBack = $("#memoryBack"), memoryAdd = $("#memoryAdd"), memoryList = $("#memoryList");
+const systemPromptInput = $("#systemPromptInput"), systemPromptHint = $("#systemPromptHint");
+const memoryNewEditor = $("#memoryNewEditor"), memoryNewContent = $("#memoryNewContent");
+const memoryNewCancel = $("#memoryNewCancel"), memoryNewSave = $("#memoryNewSave");
 
 /* ════════ 固定聊天背景 + 本地头像 ════════ */
 const THEMES = ["light","harbor"];
@@ -2496,6 +2594,7 @@ function refreshDays(){
 }
 let menuCloseTimer = null;
 let conversationCloseTimer = null;
+let memoryCloseTimer = null;
 let pageTransitionTimer = null;
 function openMenu(){
   if (!menuPanel) return;
@@ -2523,6 +2622,29 @@ function closeConversationList(){
   clearTimeout(conversationCloseTimer);
   conversationCloseTimer = setTimeout(() => conversationPanel.classList.add("hidden"), 400);
 }
+function openMemoryPage(){
+  if (!memoryPanel) return;
+  renderMemoryPage();
+  clearTimeout(memoryCloseTimer);
+  memoryPanel.classList.remove("hidden");
+  requestAnimationFrame(() => requestAnimationFrame(() => memoryPanel.classList.add("open")));
+}
+function closeMemoryPage(){
+  if (!memoryPanel) return;
+  memoryPanel.classList.remove("open");
+  clearTimeout(memoryCloseTimer);
+  memoryCloseTimer = setTimeout(() => memoryPanel.classList.add("hidden"), 400);
+}
+function showMemoryFromMenu(){
+  clearTimeout(pageTransitionTimer);
+  openMemoryPage();
+  pageTransitionTimer = setTimeout(closeMenu, 420);
+}
+function showMenuFromMemory(){
+  clearTimeout(pageTransitionTimer);
+  openMenu();
+  pageTransitionTimer = setTimeout(closeMemoryPage, 400);
+}
 function showConversationsFromMenu(){
   clearTimeout(pageTransitionTimer);
   openConversationList();
@@ -2542,11 +2664,13 @@ if (menuPanel){
     const item = e.target.closest(".menu-item");
     if (!item) return;
     if (item.dataset.menu === "chat") showConversationsFromMenu();
+    else if (item.dataset.menu === "memory") showMemoryFromMenu();
     else if (item.dataset.menu === "album") location.assign("album.html");  // album shell (wire your own backend)
     else showToast("即将开放");                           // placeholder items
   });
 }
 if (conversationBack) conversationBack.addEventListener("click", showMenuFromConversations);
+if (memoryBack) memoryBack.addEventListener("click", showMenuFromMemory);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && menuPanel && !menuPanel.classList.contains("hidden")) closeMenu();
 });
@@ -5153,6 +5277,147 @@ if (conversationImportInput) conversationImportInput.addEventListener("change", 
   catch(e){ alert("导入失败：" + (e.message || e)); }
 });
 
+/* ════════════ Client-side system prompt + memory archive ════════════ */
+const SYSTEM_PROMPT_KEY = "system_prompt";
+const MEMORIES_KEY = "memories";
+let systemPromptHintTimer = null;
+let editingMemoryId = null;
+
+function loadSystemPrompt(){
+  try{ return localStorage.getItem(SYSTEM_PROMPT_KEY) || ""; }catch(_){ return ""; }
+}
+function saveSystemPrompt(value){
+  try{ localStorage.setItem(SYSTEM_PROMPT_KEY, String(value || "")); }catch(e){ console.error("system prompt save failed", e); }
+}
+function loadMemories(){
+  try{
+    const rows = JSON.parse(localStorage.getItem(MEMORIES_KEY) || "[]");
+    if (!Array.isArray(rows)) return [];
+    return rows.map(row => ({ id:Number(row && row.id), content:String((row && row.content) || "") }))
+      .filter(row => Number.isFinite(row.id) && row.content.trim())
+      .sort((a, b) => a.id - b.id);
+  }catch(_){ return []; }
+}
+function saveMemories(rows){
+  const clean = (rows || []).map(row => ({ id:Number(row.id), content:String(row.content || "") }))
+    .filter(row => Number.isFinite(row.id) && row.content.trim())
+    .sort((a, b) => a.id - b.id);
+  localStorage.setItem(MEMORIES_KEY, JSON.stringify(clean));
+  return clean;
+}
+function nextMemoryId(rows = loadMemories()){
+  const used = new Set(rows.map(row => row.id));
+  let id = 1;
+  while (used.has(id)) id++;
+  return id;
+}
+function renderMemoryList(){
+  if (!memoryList) return;
+  const rows = loadMemories();
+  memoryList.innerHTML = rows.length ? rows.map(row => {
+    const editing = editingMemoryId === row.id;
+    return `<article class="memory-entry" data-memory-id="${row.id}">
+      <div class="memory-entry-id">#${row.id}</div>
+      ${editing
+        ? `<textarea class="memory-textarea memory-entry-edit" data-memory-edit-input="${row.id}">${escapeHtml(row.content)}</textarea>
+           <div class="memory-entry-actions"><button class="memory-small-btn" type="button" data-memory-cancel="${row.id}">Cancel</button><button class="memory-small-btn primary" type="button" data-memory-save="${row.id}">Save</button></div>`
+        : `<div class="memory-entry-content">${escapeHtml(row.content)}</div>
+           <div class="memory-entry-actions"><button class="memory-small-btn" type="button" data-memory-edit="${row.id}">Edit</button><button class="memory-small-btn danger" type="button" data-memory-delete="${row.id}">Delete</button></div>`}
+    </article>`;
+  }).join("") : '<div class="memory-empty">No memories yet.<br>Tap ＋ to add one.</div>';
+}
+function renderMemoryPage(){
+  if (systemPromptInput) systemPromptInput.value = loadSystemPrompt();
+  if (systemPromptHint) systemPromptHint.textContent = "";
+  editingMemoryId = null;
+  if (memoryNewEditor) memoryNewEditor.classList.remove("open");
+  renderMemoryList();
+}
+function applyMemoryOperation(operation, { notify = true } = {}){
+  if (!operation || typeof operation !== "object") return false;
+  const action = String(operation.action || "").toLowerCase();
+  const requestedId = Number(operation.id);
+  const hasValidId = Number.isInteger(requestedId) && requestedId > 0;
+  const content = String(operation.content || "").trim();
+  let rows = loadMemories();
+  let changed = false;
+  if (action === "add" && content){
+    const id = hasValidId && !rows.some(row => row.id === requestedId) ? requestedId : nextMemoryId(rows);
+    rows.push({ id, content });
+    changed = true;
+  }else if (action === "edit" && hasValidId && content){
+    const row = rows.find(item => item.id === requestedId);
+    if (row){ row.content = content; changed = true; }
+  }else if (action === "delete" && hasValidId){
+    const next = rows.filter(item => item.id !== requestedId);
+    changed = next.length !== rows.length;
+    rows = next;
+  }
+  if (!changed) return false;
+  saveMemories(rows);
+  if (memoryPanel && memoryPanel.classList.contains("open")) renderMemoryList();
+  if (notify) showToast("Memory updated");
+  return true;
+}
+function interceptMemoryOperations(text){
+  let updated = false;
+  const visible = String(text || "").replace(/```memory_operation\s*([\s\S]*?)```/gi, (block, json) => {
+    try{
+      const operation = JSON.parse(String(json || "").trim());
+      if (applyMemoryOperation(operation, { notify:false })) updated = true;
+      return "";
+    }catch(e){
+      console.error("invalid memory_operation", e);
+      return block;
+    }
+  }).replace(/\n{3,}/g, "\n\n").trim();
+  if (updated) showToast("Memory updated");
+  return visible;
+}
+function hideMemoryOperationsWhileStreaming(text){
+  return String(text || "").replace(/```memory_operation\s*[\s\S]*?(?:```|$)/gi, "").trimEnd();
+}
+if (systemPromptInput) systemPromptInput.addEventListener("input", () => {
+  saveSystemPrompt(systemPromptInput.value);
+  if (systemPromptHint){
+    systemPromptHint.textContent = "Saved";
+    clearTimeout(systemPromptHintTimer);
+    systemPromptHintTimer = setTimeout(() => { systemPromptHint.textContent = ""; }, 1200);
+  }
+});
+if (memoryAdd) memoryAdd.addEventListener("click", () => {
+  if (memoryNewEditor) memoryNewEditor.classList.add("open");
+  if (memoryNewContent){ memoryNewContent.value = ""; setTimeout(() => memoryNewContent.focus(), 30); }
+});
+if (memoryNewCancel) memoryNewCancel.addEventListener("click", () => memoryNewEditor && memoryNewEditor.classList.remove("open"));
+if (memoryNewSave) memoryNewSave.addEventListener("click", () => {
+  const content = String((memoryNewContent && memoryNewContent.value) || "").trim();
+  if (!content){ showToast("Memory cannot be empty"); return; }
+  applyMemoryOperation({ action:"add", id:nextMemoryId(), content });
+  memoryNewEditor.classList.remove("open");
+});
+if (memoryList) memoryList.addEventListener("click", e => {
+  const edit = e.target.closest("[data-memory-edit]");
+  const cancel = e.target.closest("[data-memory-cancel]");
+  const save = e.target.closest("[data-memory-save]");
+  const del = e.target.closest("[data-memory-delete]");
+  if (edit){ editingMemoryId = Number(edit.dataset.memoryEdit); renderMemoryList(); return; }
+  if (cancel){ editingMemoryId = null; renderMemoryList(); return; }
+  if (save){
+    const id = Number(save.dataset.memorySave);
+    const input = memoryList.querySelector(`[data-memory-edit-input="${id}"]`);
+    if (!input || !String(input.value).trim()){ showToast("Memory cannot be empty"); return; }
+    applyMemoryOperation({ action:"edit", id, content:input.value });
+    editingMemoryId = null;
+    renderMemoryList();
+    return;
+  }
+  if (del){
+    const id = Number(del.dataset.memoryDelete);
+    if (window.confirm("Delete this memory?")) applyMemoryOperation({ action:"delete", id });
+  }
+});
+
 /* ════════════ 提示音 ════════════
    播放同目录下的 send.mp3(发送/收到共用一个音),用 WebAudio 解码,
    不受 iPhone 静音键影响。iOS 需用户手势解锁(首次 pointerdown / doSend / 登录)。
@@ -5493,10 +5758,14 @@ function gatewayContentForMessage(m){
   return blocks;
 }
 function gatewayConversation(){
-  return sortedMessages()
+  const systemPrompt = loadSystemPrompt();
+  const memories = loadMemories();
+  const memoryXml = memories.map(m => `<record><id>${m.id}</id><content>${m.content}</content></record>`).join("\n");
+  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>";
+  const history = sortedMessages()
     .filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.status !== "failed")
-    .map(m => ({ role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m) }))
-    .slice(-contextMessageLimit());
+    .map(m => ({ role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m) }));
+  return [{ role:"system", content:systemContent }, ...history];
 }
 function localMessageId(){
   localMessageId.n = Math.max((localMessageId.n || 0) + 1, Date.now() * 1000);
@@ -5510,7 +5779,7 @@ async function consumeAnthropicStream(response, aiId){
   let streamPaintTimer = null;
   const paintStream = () => {
     streamPaintTimer = null;
-    setMessage({ id:aiId, ts:new Date().toISOString(), from:"ai", kind:"reply", text, meta:{}, status:"streaming" }, { cache:false });
+    setMessage({ id:aiId, ts:new Date().toISOString(), from:"ai", kind:"reply", text:hideMemoryOperationsWhileStreaming(text), meta:{}, status:"streaming" }, { cache:false });
   };
   const scheduleStreamPaint = () => {
     if (!streamPaintTimer) streamPaintTimer = setTimeout(paintStream, STREAM_FLUSH_MS);
@@ -5543,8 +5812,14 @@ async function consumeAnthropicStream(response, aiId){
   flush();
   if (streamPaintTimer){ clearTimeout(streamPaintTimer); streamPaintTimer = null; }
   if (!text) throw new Error("Gateway returned no text");
-  const chunks = text.split("\n\n").map(chunk => chunk.trim()).filter(Boolean);
+  const visibleText = interceptMemoryOperations(text);
+  const chunks = visibleText.split("\n\n").map(chunk => chunk.trim()).filter(Boolean);
   removeMessage(aiId, { render:false, cache:false });
+  if (!chunks.length){
+    scheduleRender({ stickToBottom:nearBottom() });
+    scheduleCacheSave();
+    return text;
+  }
   const completedAt = Date.now();
   chunks.forEach((chunk, index) => {
     const id = index === 0 ? aiId : localMessageId();
@@ -5578,12 +5853,14 @@ async function apiSend(text, attachments, reservedHumanId){
         content:gatewayContentForMessage({ text:text || "", meta:{ attachments } })
       };
     }
+    const systemMessage = messages[0] && messages[0].role === "system" ? messages[0] : null;
+    const outboundMessages = systemMessage ? messages.slice(1) : messages;
     let r;
     try{
       r = await fetch(GATEWAY_URL, {
         method:"POST",
         headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"text/event-stream" },
-        body:JSON.stringify({ messages, model:CONFIG.MODEL, stream:true })
+        body:JSON.stringify({ system:systemMessage ? systemMessage.content : "", messages:outboundMessages, model:CONFIG.MODEL, stream:true })
       });
     }catch(e){
       alert("FETCH ERROR: " + (e.message || JSON.stringify(e)));
