@@ -5535,7 +5535,7 @@ function handle401(){
   localStorage.removeItem(LS_KEY);
   if (es){ try{ es.close(); }catch(e){} es = null; }
   if (healthTimer){ clearInterval(healthTimer); healthTimer = null; }
-  showLogin("密钥不对,请重新输入。");
+  //showLogin("密钥不对,请重新输入。");
 }
 
 function showLogin(msg){
