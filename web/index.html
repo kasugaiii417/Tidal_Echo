@@ -3682,6 +3682,16 @@ function loadConversationIndex(){
     rows = [{ id:DEFAULT_CONVERSATION_ID, title:"Hannes", createdAt:Date.now(), updatedAt:Date.now(), preview:"", readOnly:false }];
     try{ localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(rows)); }catch(_){}
   }
+  let migratedImportedChats = false;
+  rows.forEach(row => {
+    if (row && row.imported && row.readOnly){
+      row.readOnly = false;
+      migratedImportedChats = true;
+    }
+  });
+  if (migratedImportedChats){
+    try{ localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(rows)); }catch(_){}
+  }
   return rows;
 }
 let conversations = loadConversationIndex();
@@ -5358,6 +5368,12 @@ function normalizeImportConversation(candidate, index, fileName){
     };
   }).filter(Boolean);
   if (!messages.length) return null;
+  messages.sort((a, b) => {
+    const aTime = Date.parse(a.ts);
+    const bTime = Date.parse(b.ts);
+    if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
+    return msgNum(a.id) - msgNum(b.id);
+  });
   let earliestTimestamp = Infinity;
   let latestTimestamp = -Infinity;
   for (const message of messages){
@@ -5448,7 +5464,7 @@ function commitSelectedImports(){
       id, title:item.title,
       createdAt:Number.isFinite(firstTimestamp) ? firstTimestamp : item.createdAt,
       updatedAt:Number.isFinite(lastTimestamp) ? lastTimestamp : item.updatedAt,
-      preview:messagePreview(messages[messages.length - 1]), readOnly:true, imported:true
+      preview:messagePreview(messages[messages.length - 1]), readOnly:false, imported:true
     };
   });
   conversations.push(...rows);
