@@ -5220,13 +5220,28 @@ async function consumeAnthropicStream(response, aiId){
   if (buffer.startsWith("data:")) dataLines.push(buffer.slice(5).trimStart());
   flush();
   if (!text) throw new Error("Gateway returned no text");
-  setMessage({ id:aiId, ts:new Date().toISOString(), from:"ai", kind:"reply", text, meta:{}, status:"sent" });
-  freshKeys.add(msgKey(aiId));
+  const chunks = text.split("\n\n").map(chunk => chunk.trim()).filter(Boolean);
+  removeMessage(aiId, { render:false, cache:false });
+  const completedAt = Date.now();
+  chunks.forEach((chunk, index) => {
+    const id = index === 0 ? aiId : localMessageId();
+    setMessage({
+      id,
+      ts:new Date(completedAt + index).toISOString(),
+      from:"ai",
+      kind:"reply",
+      text:chunk,
+      meta:{},
+      status:"sent"
+    }, { render:false, cache:false });
+    freshKeys.add(msgKey(id));
+  });
+  scheduleRender({ stickToBottom:nearBottom() });
+  scheduleCacheSave();
   playReceiveSound();
   return text;
 }
 async function apiSend(text, attachments){
-  alert("SENDING TO: " + GATEWAY_URL);
   if (USE_MOCK) return Mock.send(text || "");
   const humanId = localMessageId();
   const aiId = localMessageId();
