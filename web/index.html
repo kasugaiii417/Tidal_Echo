@@ -2031,7 +2031,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5l-8.8 8.8a5 5 0 0 1-7.1-7.1l8.8-8.8a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.6 1.6 0 0 1-2.3-2.3l8-8"/></svg>
       </button>
       <input type="file" id="clipInput" multiple class="hidden" aria-hidden="true">
-      <textarea id="input" rows="1" placeholder="Write a letter..." enterkeyhint="send"></textarea>
+      <textarea id="input" rows="1" placeholder="Write a letter..." enterkeyhint="enter"></textarea>
       <button class="emojibtn" id="emojiBtn" aria-label="表情" title="表情">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.3a4.2 4.2 0 0 0 7 0"/><line x1="9" y1="9.3" x2="9" y2="10"/><line x1="15" y1="9.3" x2="15" y2="10"/></svg>
       </button>
@@ -5352,13 +5352,21 @@ function normalizeImportConversation(candidate, index, fileName){
     };
   }).filter(Boolean);
   if (!messages.length) return null;
-  const timestamps = messages.map(message => Date.parse(message.ts)).filter(Number.isFinite);
+  let earliestTimestamp = Infinity;
+  let latestTimestamp = -Infinity;
+  for (const message of messages){
+    const timestamp = Date.parse(message.ts);
+    if (!Number.isFinite(timestamp)) continue;
+    if (timestamp < earliestTimestamp) earliestTimestamp = timestamp;
+    if (timestamp > latestTimestamp) latestTimestamp = timestamp;
+  }
   const sourceDate = importedTimestamp(
     source.updated_at ?? source.updatedAt ?? source.timestamp ?? source.date ?? source.created_at ?? source.createdAt,
     NaN
   );
-  const createdAt = timestamps.length ? Math.min(...timestamps) : (Number.isFinite(sourceDate) ? sourceDate : Date.now());
-  const updatedAt = timestamps.length ? Math.max(...timestamps) : (Number.isFinite(sourceDate) ? sourceDate : createdAt);
+  const hasMessageTimestamps = Number.isFinite(earliestTimestamp) && Number.isFinite(latestTimestamp);
+  const createdAt = hasMessageTimestamps ? earliestTimestamp : (Number.isFinite(sourceDate) ? sourceDate : Date.now());
+  const updatedAt = hasMessageTimestamps ? latestTimestamp : (Number.isFinite(sourceDate) ? sourceDate : createdAt);
   const first = messages[0];
   const title = String(source.title || source.name || source.topic || source.summary || `${fileName.replace(/\.json$/i, "")} ${index + 1}` || `Conversation ${index + 1}`).trim().slice(0, 80);
   return { title:title || `Conversation ${index + 1}`, createdAt, updatedAt, preview:messagePreview(first), messages };
@@ -5646,6 +5654,9 @@ window.addEventListener("pointerdown", ensureAudio, { once:true });   // 进页�
 
 /* ════════════ 发送 ════════════ */
 let composing = false;
+function mobileComposerUsesButtonOnly(){
+  return !!(window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+}
 function focusInputWithoutPageScroll(e){
   if (document.activeElement === inputEl) return;
   if (e) e.preventDefault();
@@ -5657,6 +5668,7 @@ inputEl.addEventListener("pointerdown", focusInputWithoutPageScroll);
 
 inputEl.addEventListener("compositionstart", () => composing = true);
 inputEl.addEventListener("compositionend",   () => composing = false);
+let shiftLineBreakPending = false;
 function resizeComposerInput(){
   inputEl.style.height = "auto";
   const style = getComputedStyle(inputEl);
@@ -5673,10 +5685,24 @@ inputEl.addEventListener("input", () => {
   micBtn.classList.add("hidden");
 });
 inputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !composing && !e.isComposing){
+  const isEnter = e.key === "Enter" || e.key === "Return" || e.keyCode === 13;
+  if (!isEnter) return;
+  if (mobileComposerUsesButtonOnly()) return;
+  if (e.shiftKey){
+    shiftLineBreakPending = true;
+    setTimeout(() => { shiftLineBreakPending = false; }, 0);
+    return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && !composing && !e.isComposing){
     e.preventDefault();
     doSend();
   }
+});
+inputEl.addEventListener("beforeinput", (e) => {
+  const isLineBreak = e.inputType === "insertLineBreak" || e.inputType === "insertParagraph";
+  if (!isLineBreak || mobileComposerUsesButtonOnly() || shiftLineBreakPending || composing || e.isComposing) return;
+  e.preventDefault();
+  doSend();
 });
 inputEl.addEventListener("focus", () => setTimeout(scrollToBottom, 60));
 sendBtn.addEventListener("click", doSend);
