@@ -5828,7 +5828,7 @@ function imageToJpeg(file){
     img.src = url;
   });
 }
-async function sendOneFile(file){
+async function sendOneFile(file, caption = ""){
   ensureAudio();
   const image = isImageFile(file);
   let blob = file, name = file.name || (image ? "image" : "file"), mime = file.type || "";
@@ -5848,7 +5848,7 @@ async function sendOneFile(file){
   const currentSid = effectiveApiSession();
   const optimisticMeta = { attachments: [att0] };
   if (currentSid) optimisticMeta.api_session = currentSid;
-  const optimistic = { id: tempKey, ts: new Date(optimisticTs).toISOString(), from: "human", kind: "user", text: "", meta: optimisticMeta, status: "sending" };
+  const optimistic = { id: tempKey, ts: new Date(optimisticTs).toISOString(), from: "human", kind: "user", text: caption, meta: optimisticMeta, status: "sending" };
   seen.add(tempKey);
   setMessage(optimistic, { render: false, cache: true });
   freshKeys.add(tempKey);
@@ -5858,11 +5858,11 @@ async function sendOneFile(file){
     const up = await apiUpload(blob, name, mime);
     if (localUrl && up && up.url) localPreview.set(up.url, localUrl);
     const finalAtt = { url: up.url, name: up.name, size: up.size, mime: up.mime, kind: up.kind, width: imgW, height: imgH };
-    rememberPendingOutgoing(tempKey, "", optimisticTs);
-    const { id } = await apiSend("", [finalAtt], Number(tempKey));
+    rememberPendingOutgoing(tempKey, caption, optimisticTs);
+    const { id } = await apiSend(caption, [finalAtt], Number(tempKey));
     const finalMeta = { attachments: [finalAtt] };
     if (currentSid) finalMeta.api_session = currentSid;
-    confirmOptimistic(tempKey, msgKey(id), { id: id, ts: optimistic.ts, from: "human", kind: "user", text: "", meta: finalMeta, status: "sent" });
+    confirmOptimistic(tempKey, msgKey(id), { id: id, ts: optimistic.ts, from: "human", kind: "user", text: caption, meta: finalMeta, status: "sent" });
     dropPendingOutgoing(tempKey);
   }catch(err){
     dropPendingOutgoing(tempKey);
@@ -5873,7 +5873,15 @@ async function sendOneFile(file){
 }
 async function handleFiles(list){
   const files = Array.from(list || []);
-  for (const f of files){ await sendOneFile(f); }
+  if (!files.length) return;
+  const caption = inputEl.value.trim();
+  if (caption){
+    inputEl.value = "";
+    resizeComposerInput();
+  }
+  for (let index = 0; index < files.length; index++){
+    await sendOneFile(files[index], index === 0 ? caption : "");
+  }
 }
 if (clipBtn && clipInput){
   clipBtn.addEventListener("click", () => clipInput.click());
