@@ -524,6 +524,7 @@
   @keyframes enterHuman{ from{ transform: translate(6px, 9px) scale(.95); opacity:0; } 55%{ opacity:1; } to{ transform:none; opacity:1; } }
   @keyframes enterAi{ from{ transform: translate(-6px, 9px) scale(.95); opacity:0; } 55%{ opacity:1; } to{ transform:none; opacity:1; } }
   .row.ai .bubble{
+    max-width: 80%;
     background: var(--bubble-ai-bg);
     color: var(--bubble-ai-fg);
     border: 0;
@@ -848,6 +849,7 @@
     color: var(--text); font-family: var(--font-en), var(--font-cn); font-size: clamp(15px, 2vw, 18px); line-height:1.35;
     max-height: 110px; padding: 6px 0; margin:0;
   }
+  .composer textarea{ max-height:none; overflow-y:hidden; }
   textarea::placeholder{ color: var(--text-faint); opacity: 1; }
   .emojibtn{
     flex:none; width: clamp(28px, 3.8vw, 38px); height: clamp(28px, 3.8vw, 38px); border:none; background:transparent;
@@ -1353,6 +1355,33 @@
   .conversation-delete:active{ color:#b45f62; background:rgba(180,95,98,.10); transform:scale(.94); }
   .conversation-delete svg{ width:17px; height:17px; pointer-events:none; }
   .conversation-empty{ padding:70px 20px; text-align:center; color:var(--text-faint); line-height:1.8; }
+  .import-picker{
+    position:absolute; inset:0; z-index:4; display:none; flex-direction:column;
+    color:var(--text); background:var(--bg); background-image:var(--menu-wall-default);
+    background-size:cover; background-position:center;
+  }
+  .import-picker.open{ display:flex; }
+  .import-picker::before{ content:""; position:absolute; inset:0; background:var(--scrim); pointer-events:none; }
+  .import-picker-head{
+    position:relative; z-index:1; display:grid; grid-template-columns:44px 1fr auto;
+    align-items:center; gap:8px; padding:calc(env(safe-area-inset-top) + 12px) var(--side-pad) 12px;
+    border-bottom:1px solid var(--hairline); background:color-mix(in srgb, var(--bg) 72%, transparent);
+    -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  }
+  .import-picker-back{ width:40px; height:40px; border:0; border-radius:50%; display:grid; place-items:center; color:var(--text-soft); background:transparent; cursor:pointer; }
+  .import-picker-back svg{ width:22px; height:22px; }
+  .import-picker-title{ margin:0; font-family:var(--font-en),var(--font-cn); font-size:clamp(20px,5.5vw,27px); font-weight:500; }
+  .import-picker-confirm{ border:0; border-radius:999px; padding:8px 13px; color:var(--accent-fg); background:var(--accent); font:inherit; font-size:12px; cursor:pointer; }
+  .import-picker-confirm:disabled{ opacity:.45; cursor:default; }
+  .import-picker-summary{ position:relative; z-index:1; padding:13px var(--side-pad) 5px; color:var(--text-faint); font-size:12px; }
+  .import-picker-list{ position:relative; z-index:1; flex:1 1 auto; overflow-y:auto; padding:5px var(--side-pad) calc(env(safe-area-inset-bottom) + 28px); }
+  .import-picker-list::-webkit-scrollbar{ width:0; }
+  .import-picker-row{ display:grid; grid-template-columns:24px minmax(0,1fr); gap:11px; align-items:start; padding:15px 2px; border-bottom:1px solid var(--hairline); cursor:pointer; }
+  .import-picker-row input{ width:18px; height:18px; margin:2px 0 0; accent-color:var(--accent); }
+  .import-picker-copy{ min-width:0; display:flex; flex-direction:column; gap:5px; }
+  .import-picker-name{ color:var(--text); font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .import-picker-meta{ color:var(--text-faint); font-size:11px; }
+  .import-picker-preview{ color:var(--text-soft); font-size:12px; line-height:1.45; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
   .app.readonly-chat .composer{ opacity:.58; pointer-events:none; }
 
   /* ── Local memory archive ── */
@@ -2241,6 +2270,17 @@
     </header>
     <div class="conversation-list" id="conversationList"></div>
     <input class="hidden" id="conversationImportInput" type="file" accept="application/json,.json">
+    <section class="import-picker" id="importPicker" aria-label="选择要导入的对话">
+      <header class="import-picker-head">
+        <button class="import-picker-back" id="importPickerBack" type="button" aria-label="取消导入">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <h2 class="import-picker-title">Import conversations</h2>
+        <button class="import-picker-confirm" id="importPickerConfirm" type="button" disabled>Import</button>
+      </header>
+      <div class="import-picker-summary" id="importPickerSummary"></div>
+      <div class="import-picker-list" id="importPickerList"></div>
+    </section>
   </div>
 </div>
 
@@ -2454,6 +2494,8 @@ const brainSeg = $("#brainSeg"), brainHint = $("#brainHint");
 const conversationPanel = $("#conversationPanel"), conversationList = $("#conversationList");
 const conversationBack = $("#conversationBack"), conversationAdd = $("#conversationAdd");
 const conversationImport = $("#conversationImport"), conversationImportInput = $("#conversationImportInput");
+const importPicker = $("#importPicker"), importPickerBack = $("#importPickerBack"), importPickerConfirm = $("#importPickerConfirm");
+const importPickerSummary = $("#importPickerSummary"), importPickerList = $("#importPickerList");
 const memoryPanel = $("#memoryPanel"), memoryBack = $("#memoryBack"), memoryAdd = $("#memoryAdd"), memoryList = $("#memoryList");
 const systemPromptInput = $("#systemPromptInput"), systemPromptHint = $("#systemPromptHint");
 const memoryNewEditor = $("#memoryNewEditor"), memoryNewContent = $("#memoryNewContent");
@@ -5226,30 +5268,160 @@ function importedText(content){
   }).filter(Boolean).join("\n");
   return content == null ? "" : JSON.stringify(content);
 }
-async function importConversationFile(file){
-  const parsed = JSON.parse(await file.text());
-  if (!parsed || !Array.isArray(parsed.messages)) throw new Error("JSON 必须包含 messages 数组");
-  const base = Date.now() * 1000;
-  const messages = parsed.messages.map((m, index) => {
-    if (!m || (m.role !== "user" && m.role !== "assistant")) return null;
-    const text = importedText(m.content);
+let pendingImportConversations = [];
+
+function importedRole(message){
+  const raw = message && (message.role ?? message.sender?.role ?? message.sender ?? message.author?.role ?? message.author ?? message.type);
+  const role = String(raw || "").toLowerCase();
+  if (["user", "human", "client"].includes(role)) return "user";
+  if (["assistant", "ai", "bot", "claude"].includes(role)) return "assistant";
+  return "";
+}
+function importedTimestamp(value, fallback){
+  if (typeof value === "number" && Number.isFinite(value)){
+    const absolute = Math.abs(value);
+    const ms = absolute >= 1e17 ? value / 1e6 : absolute >= 1e14 ? value / 1000 : absolute >= 1e11 ? value : value * 1000;
+    if (Number.isFinite(ms) && Math.abs(ms) <= 8.64e15) return ms;
+  }
+  if (typeof value === "string" && value.trim()){
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return importedTimestamp(numeric, fallback);
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+function importedMessageArray(value){
+  return Array.isArray(value) && value.some(item => item && typeof item === "object" && importedRole(item));
+}
+function extractImportCandidates(root){
+  const candidates = [];
+  const seenObjects = new Set();
+  const seenMessageArrays = new Set();
+  const messageKeys = ["messages", "chat_messages", "chatMessages", "history"];
+  const visit = (value, depth = 0, parentTitle = "") => {
+    if (!value || depth > 6) return;
+    if (Array.isArray(value)){
+      if (importedMessageArray(value)){
+        if (!seenMessageArrays.has(value)){
+          seenMessageArrays.add(value);
+          candidates.push({ source:{ title:parentTitle }, rawMessages:value });
+        }
+        return;
+      }
+      value.forEach(item => visit(item, depth + 1, parentTitle));
+      return;
+    }
+    if (typeof value !== "object" || seenObjects.has(value)) return;
+    seenObjects.add(value);
+    const title = String(value.title || value.name || value.topic || value.summary || parentTitle || "");
+    for (const key of messageKeys){
+      if (importedMessageArray(value[key])){
+        if (!seenMessageArrays.has(value[key])){
+          seenMessageArrays.add(value[key]);
+          candidates.push({ source:value, rawMessages:value[key] });
+        }
+        return;
+      }
+    }
+    Object.values(value).forEach(child => visit(child, depth + 1, title));
+  };
+  visit(root);
+  return candidates;
+}
+function normalizeImportConversation(candidate, index, fileName){
+  const source = candidate.source || {};
+  const sourceMessages = candidate.rawMessages || [];
+  const fallbackStart = Date.now() + index * 1000;
+  const messages = sourceMessages.map((message, messageIndex) => {
+    const role = importedRole(message);
+    if (!role) return null;
+    const content = message.content ?? message.text ?? message.message ?? message.body ?? "";
+    const text = importedText(content);
+    const timestamp = importedTimestamp(
+      message.timestamp ?? message.created_at ?? message.createdAt ?? message.date ?? message.sent_at ?? message.updated_at,
+      fallbackStart + messageIndex
+    );
     return {
-      id:String(base + index),
-      ts:m.timestamp || m.created_at || new Date(Date.now() + index).toISOString(),
-      from:m.role === "user" ? "human" : "ai",
-      kind:m.role === "user" ? "user" : "reply",
+      id:String(timestamp * 1000 + messageIndex),
+      ts:new Date(timestamp).toISOString(),
+      from:role === "user" ? "human" : "ai",
+      kind:role === "user" ? "user" : "reply",
       text,
       meta:{}
     };
   }).filter(Boolean);
-  if (!messages.length) throw new Error("没有可导入的 user/assistant 消息");
-  const id = makeConversationId();
-  const title = String(parsed.title || file.name.replace(/\.json$/i, "") || "导入记录").slice(0, 40);
-  const last = messages[messages.length - 1];
-  localStorage.setItem(conversationMessagesKey(id), JSON.stringify(messages));
-  conversations.push({ id, title, createdAt:Date.now(), updatedAt:Date.parse(last.ts) || Date.now(), preview:messagePreview(last), readOnly:true, imported:true });
+  if (!messages.length) return null;
+  const timestamps = messages.map(message => Date.parse(message.ts)).filter(Number.isFinite);
+  const sourceDate = importedTimestamp(
+    source.updated_at ?? source.updatedAt ?? source.timestamp ?? source.date ?? source.created_at ?? source.createdAt,
+    NaN
+  );
+  const createdAt = timestamps.length ? Math.min(...timestamps) : (Number.isFinite(sourceDate) ? sourceDate : Date.now());
+  const updatedAt = timestamps.length ? Math.max(...timestamps) : (Number.isFinite(sourceDate) ? sourceDate : createdAt);
+  const first = messages[0];
+  const title = String(source.title || source.name || source.topic || source.summary || `${fileName.replace(/\.json$/i, "")} ${index + 1}` || `Conversation ${index + 1}`).trim().slice(0, 80);
+  return { title:title || `Conversation ${index + 1}`, createdAt, updatedAt, preview:messagePreview(first), messages };
+}
+function closeImportPicker(){
+  pendingImportConversations = [];
+  if (importPicker) importPicker.classList.remove("open");
+  if (importPickerList) importPickerList.innerHTML = "";
+}
+function selectedImportIndexes(){
+  if (!importPickerList) return [];
+  return [...importPickerList.querySelectorAll("[data-import-index]:checked")].map(input => Number(input.dataset.importIndex));
+}
+function updateImportPickerSelection(){
+  const count = selectedImportIndexes().length;
+  if (importPickerConfirm){
+    importPickerConfirm.disabled = count === 0;
+    importPickerConfirm.textContent = count ? `Import ${count}` : "Import";
+  }
+}
+function openImportPicker(items){
+  pendingImportConversations = items;
+  if (!importPicker || !importPickerList) return;
+  importPickerSummary.textContent = `Found ${items.length} conversation${items.length === 1 ? "" : "s"}. Select which ones to import.`;
+  importPickerList.innerHTML = items.map((item, index) => `
+    <label class="import-picker-row">
+      <input type="checkbox" data-import-index="${index}" checked>
+      <span class="import-picker-copy">
+        <span class="import-picker-name">${escapeHtml(item.title)}</span>
+        <span class="import-picker-meta">${escapeHtml(new Date(item.updatedAt).toLocaleString())} · ${item.messages.length} messages</span>
+        <span class="import-picker-preview">${escapeHtml(item.preview || "No preview")}</span>
+      </span>
+    </label>`).join("");
+  importPicker.classList.add("open");
+  updateImportPickerSelection();
+}
+async function importConversationFile(file){
+  const parsed = JSON.parse(await file.text());
+  const candidates = extractImportCandidates(parsed);
+  const items = candidates.map((candidate, index) => normalizeImportConversation(candidate, index, file.name)).filter(Boolean);
+  if (!items.length){
+    console.log("Unrecognized chat export structure:", parsed);
+    alert("Couldn't parse this format — check console for structure");
+    return;
+  }
+  openImportPicker(items);
+}
+function commitSelectedImports(){
+  const selected = selectedImportIndexes().map(index => pendingImportConversations[index]).filter(Boolean);
+  if (!selected.length) return;
+  const rows = selected.map(item => {
+    const id = makeConversationId();
+    localStorage.setItem(conversationMessagesKey(id), JSON.stringify(item.messages));
+    return {
+      id, title:item.title, createdAt:item.createdAt, updatedAt:item.updatedAt,
+      preview:item.preview, readOnly:true, imported:true
+    };
+  });
+  conversations.push(...rows);
   saveConversationIndex();
-  await enterConversation(id);
+  closeImportPicker();
+  renderConversationList();
+  showToast(`Imported ${rows.length} conversation${rows.length === 1 ? "" : "s"}`);
 }
 if (conversationList) conversationList.addEventListener("click", e => {
   const deleteButton = e.target.closest("[data-delete-conversation]");
@@ -5269,12 +5441,15 @@ if (conversationList) conversationList.addEventListener("keydown", e => {
 });
 if (conversationAdd) conversationAdd.addEventListener("click", () => void createConversation());
 if (conversationImport) conversationImport.addEventListener("click", () => conversationImportInput && conversationImportInput.click());
+if (importPickerBack) importPickerBack.addEventListener("click", closeImportPicker);
+if (importPickerList) importPickerList.addEventListener("change", updateImportPickerSelection);
+if (importPickerConfirm) importPickerConfirm.addEventListener("click", commitSelectedImports);
 if (conversationImportInput) conversationImportInput.addEventListener("change", async () => {
   const file = conversationImportInput.files && conversationImportInput.files[0];
   conversationImportInput.value = "";
   if (!file) return;
   try{ await importConversationFile(file); }
-  catch(e){ alert("导入失败：" + (e.message || e)); }
+  catch(e){ console.error("Conversation import failed:", e); alert("导入失败：" + (e.message || e)); }
 });
 
 /* ════════════ Client-side system prompt + memory archive ════════════ */
@@ -5482,14 +5657,23 @@ inputEl.addEventListener("pointerdown", focusInputWithoutPageScroll);
 
 inputEl.addEventListener("compositionstart", () => composing = true);
 inputEl.addEventListener("compositionend",   () => composing = false);
-inputEl.addEventListener("input", () => {
+function resizeComposerInput(){
   inputEl.style.height = "auto";
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
+  const style = getComputedStyle(inputEl);
+  const lineHeight = parseFloat(style.lineHeight) || 22;
+  const verticalPadding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+  const maxHeight = Math.ceil(lineHeight * 6 + verticalPadding);
+  const nextHeight = Math.min(inputEl.scrollHeight, maxHeight);
+  inputEl.style.height = nextHeight + "px";
+  inputEl.style.overflowY = inputEl.scrollHeight > maxHeight ? "auto" : "hidden";
+}
+inputEl.addEventListener("input", () => {
+  resizeComposerInput();
   sendBtn.classList.remove("hidden");
   micBtn.classList.add("hidden");
 });
 inputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey && !composing){
+  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !composing && !e.isComposing){
     e.preventDefault();
     doSend();
   }
@@ -5511,7 +5695,7 @@ async function doSend(){
   triggerSendPress();            // 发送键:轻按回弹的小反馈
   ensureAudio();                 // 手势内解锁/预热音频
   inputEl.value = "";
-  inputEl.style.height = "auto";
+  resizeComposerInput();
   sendBtn.classList.remove("hidden");
   micBtn.classList.add("hidden");
 
@@ -5742,11 +5926,17 @@ function backfill(){}
 function openStream(){ connected = true; setConn("online"); }
 async function apiHealth(){ return true; }
 
-function gatewayContentForMessage(m){
+function gatewayLocalTime(ts){
+  const date = new Date(ts || Date.now());
+  const safe = Number.isNaN(date.getTime()) ? new Date() : date;
+  return `[${String(safe.getHours()).padStart(2, "0")}:${String(safe.getMinutes()).padStart(2, "0")}]`;
+}
+function gatewayContentForMessage(m, includeTimestamp = false){
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
-  if (!atts.length) return m.text || "";
+  const prefix = includeTimestamp ? `${gatewayLocalTime(m.ts)} ` : "";
+  if (!atts.length) return prefix + (m.text || "");
   const blocks = [];
-  if (m.text) blocks.push({ type:"text", text:m.text });
+  if (m.text || prefix) blocks.push({ type:"text", text:prefix + (m.text || "") });
   atts.forEach(a => {
     const match = /^data:([^;,]+);base64,(.+)$/.exec(a.url || "");
     if (a.kind === "image" && match){
@@ -5764,7 +5954,7 @@ function gatewayConversation(){
   const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>";
   const history = sortedMessages()
     .filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.status !== "failed")
-    .map(m => ({ role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m) }));
+    .map(m => ({ role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m, m.from === "human") }));
   return [{ role:"system", content:systemContent }, ...history];
 }
 function localMessageId(){
@@ -5848,9 +6038,10 @@ async function apiSend(text, attachments, reservedHumanId){
   try{
     const messages = gatewayConversation();
     if (attachments && attachments.length && messages.length){
+      const latestHuman = sortedMessages().filter(m => m.from === "human").pop();
       messages[messages.length - 1] = {
         role:"user",
-        content:gatewayContentForMessage({ text:text || "", meta:{ attachments } })
+        content:gatewayContentForMessage({ text:text || "", ts:latestHuman && latestHuman.ts, meta:{ attachments } }, true)
       };
     }
     const systemMessage = messages[0] && messages[0].role === "system" ? messages[0] : null;
