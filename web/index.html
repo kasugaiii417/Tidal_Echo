@@ -2182,12 +2182,12 @@
         </div>
       </section>
 
-      <!-- 发送给 gateway 的本地消息数量上限 -->
+      <!-- 发送给 gateway 的最近用户轮次数量上限 -->
       <section class="settings-card">
-        <div class="settings-label">上下文消息 <i class="info-i" title="每次请求只发送最近 N 条消息">i</i></div>
+        <div class="settings-label">上下文轮次 <i class="info-i" title="保留最近 N 条用户消息，以及每条之后的全部 Assistant 回复气泡">i</i></div>
         <div class="context-slider-wrap">
-          <input class="context-slider" id="contextSlider" type="range" min="10" max="100" value="50" aria-label="保留消息数量">
-          <div class="context-scale"><span id="contextCountLabel">保留50条</span><span>最多100条</span></div>
+          <input class="context-slider" id="contextSlider" type="range" min="10" max="100" value="50" aria-label="保留用户轮次数量">
+          <div class="context-scale"><span id="contextCountLabel">保留50轮</span><span>最多100轮</span></div>
         </div>
       </section>
 
@@ -2211,7 +2211,7 @@
         <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg></span>
         <span class="action-name">status</span>
         <span class="status-main">
-          <span class="status-used" id="statusUsed">保留0 / 50条</span>
+          <span class="status-used" id="statusUsed">保留0 / 50轮</span>
           <span class="status-sid"><span id="statusSid">sid: a9f3…</span>
             <button class="status-copy" id="statusCopy" type="button" aria-label="复制 sid">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.4"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
@@ -3484,20 +3484,20 @@ wireSegmented(effortSeg, "companion_pick_effort");
 
 if (contextSlider){
   const contextLabel = $("#contextCountLabel");
-  const savedContext = localStorage.getItem("companion_context_messages");
+  const savedContext = localStorage.getItem("companion_context_turns") || localStorage.getItem("companion_context_messages");
   if (savedContext !== null && savedContext !== "") contextSlider.value = savedContext;
   const paintContextCount = () => {
-    if (contextLabel) contextLabel.textContent = `保留${contextSlider.value}条`;
+    if (contextLabel) contextLabel.textContent = `保留${contextSlider.value}轮`;
   };
   paintContextCount();
   contextSlider.addEventListener("input", () => {
     paintContextCount();
-    try{ localStorage.setItem("companion_context_messages", contextSlider.value); }catch(_){}
+    try{ localStorage.setItem("companion_context_turns", contextSlider.value); }catch(_){}
     refreshContextStatus();
   });
 }
 
-function contextMessageLimit(){
+function contextTurnLimit(){
   const value = Number(contextSlider ? contextSlider.value : 50);
   return Math.max(10, Math.min(100, Number.isFinite(value) ? Math.round(value) : 50));
 }
@@ -3524,8 +3524,8 @@ function applyContextStatus(s){
   pendingContextSid = pending || "";
   if (resumeRow) resumeRow.classList.toggle("hidden", !pendingContextSid);
   if (statusUsedEl){
-    const available = typeof chatMessages === "undefined" ? 0 : gatewayConversation().length;
-    statusUsedEl.textContent = `保留${Math.min(available, contextMessageLimit())} / ${contextMessageLimit()}条${pending ? " · pending" : ""}`;
+    const available = typeof chatMessages === "undefined" ? 0 : gatewayHistoryMessages().filter(message => message.role === "user").length;
+    statusUsedEl.textContent = `保留${Math.min(available, contextTurnLimit())} / ${contextTurnLimit()}轮${pending ? " · pending" : ""}`;
   }
   const sid = pending || s.active_sid || "";
   if (statusSidEl){
@@ -6082,14 +6082,26 @@ function gatewayContentForMessage(m, includeTimestamp = false){
   });
   return blocks;
 }
+function gatewayHistoryMessages(){
+  return sortedMessages()
+    .filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.status !== "failed")
+    .map(m => ({ role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m, m.from === "human") }));
+}
+function keepRecentUserTurns(history, limit){
+  let remaining = limit;
+  for (let index = history.length - 1; index >= 0; index--){
+    if (history[index].role !== "user") continue;
+    remaining--;
+    if (remaining === 0) return history.slice(index);
+  }
+  return history;
+}
 function gatewayConversation(){
   const systemPrompt = loadSystemPrompt();
   const memories = loadMemories();
   const memoryXml = memories.map(m => `<record><id>${m.id}</id><content>${m.content}</content></record>`).join("\n");
   const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>";
-  const history = sortedMessages()
-    .filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.status !== "failed")
-    .map(m => ({ role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m, m.from === "human") }));
+  const history = keepRecentUserTurns(gatewayHistoryMessages(), contextTurnLimit());
   return [{ role:"system", content:systemContent }, ...history];
 }
 function localMessageId(){
