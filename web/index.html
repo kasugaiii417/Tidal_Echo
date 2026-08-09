@@ -5539,8 +5539,8 @@ function handle401(){
 }
 
 function showLogin(msg){
-  appEl.classList.add("hidden");
-  loginEl.classList.remove("hidden");
+  loginEl.classList.add("hidden");
+  appEl.classList.remove("hidden");
   $("#loginErr").textContent = msg || "";
   $("#secretInput").value = "";
   setTimeout(() => $("#secretInput").focus(), 80);
@@ -5616,7 +5616,7 @@ function startChat(initialMsgs, { connect = true, fromCache = false } = {}){
 }
 
 async function init(){
-  if (!secret){ showLogin(); return; }
+  //if (!secret){ showLogin(); return; }
   await loadSessions();
   loadBrain();
   let showedCache = false;
