@@ -54,14 +54,14 @@
     --bg: #F7FAFC;
     --header-bg: #F7FAFC;
     --hairline: rgba(120,142,165,.24);
-    --text: #253447;
-    --text-soft: #5E7080;
+    --text: #172534;
+    --text-soft: #435566;
     --text-faint: #8A99A8;
     --bubble-ai-bg: #ECEEF3;
-    --bubble-ai-fg: #253447;
+    --bubble-ai-fg: #172534;
     --bubble-ai-line: transparent;
     --bubble-human-bg: #DFE5EE;
-    --bubble-human-fg: #253447;
+    --bubble-human-fg: #172534;
     --bubble-human-line: transparent;
     --accent: #4C6378;
     --send-bg: #2C4056;
@@ -119,13 +119,13 @@
       --bg: #F4F2EF;
       --header-bg: #F4F2EF;
       --hairline: rgba(74,93,108,.20);
-      --text: #36404B;
-      --text-soft: #5E6B78;
+      --text: #202A34;
+      --text-soft: #465563;
       --text-faint: #9197A0;
       --bubble-ai-bg: #EAE6E4;
-      --bubble-ai-fg: #36404B;
+      --bubble-ai-fg: #202A34;
       --bubble-human-bg: #E1E0E3;
-      --bubble-human-fg: #36404B;
+      --bubble-human-fg: #202A34;
       --accent: #4A5D6C;
       --send-bg: #4A5D6C;
       --tick: #7E8E9C;
@@ -144,8 +144,8 @@
   body{ position: fixed; inset: 0; width: 100%;
     background: var(--bg);
     color: var(--text);
-    font-family: var(--font-cn);
-    font-size: clamp(14px, 1.45vw, 16px);
+    font-family: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
+    font-size: clamp(15px, 1.55vw, 17px);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -200,8 +200,8 @@
     padding: 0 76px;
   }
   .peerpill .name{
-    font-family: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
-    font-size: clamp(18px, 3vw, 28px);
+    font-family: var(--font-cn);
+    font-size: clamp(19px, 3.1vw, 29px);
     font-weight: 500;
     color: var(--text);
     letter-spacing: 0;
@@ -209,7 +209,7 @@
   }
   .peerpill .status{
     font-family: var(--font-en), var(--font-cn);
-    font-size: clamp(12px, 1.8vw, 16px);
+    font-size: clamp(13px, 1.9vw, 17px);
     color: var(--text-soft);
     margin-top: 4px;
     letter-spacing: 0;
@@ -507,8 +507,8 @@
     padding: clamp(8px, 1.05vw, 12px) clamp(13px, 1.65vw, 18px) clamp(8px, 1.1vw, 13px);
     border-radius: var(--bubble-radius);
     position: relative;
-    font-family: var(--font-cn);
-    font-size: clamp(14px, 1.55vw, 16px); line-height: 1.58;
+    font-family: Arial, "PingFang SC", sans-serif;
+    font-size: clamp(15.5px, 1.7vw, 17.5px); line-height: 1.6;
     word-wrap: break-word;
     overflow-wrap: break-word;
     animation: pop .24s cubic-bezier(.2,.8,.2,1) both;
@@ -748,7 +748,7 @@
   }
   .act-label{
     color: var(--think-label);
-    font-family: var(--font-cn);                /* 统一宋体:--font-en 末尾的通用 serif 会先吃掉 CJK→iOS 回退黑体 */
+    font-family: var(--font-cn);
     font-size: clamp(12px, 1.32vw, 13.5px);
     line-height: 1.46;
     letter-spacing: .02em;
@@ -1109,7 +1109,7 @@
   .action-row.status{ cursor:default; }
   .action-row.status .status-main{ margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:2px; min-width:0; }
   .status-used{ color: var(--text); font-family: var(--font-en), var(--font-cn); font-size:13px; }
-  .status-sid{ display:flex; align-items:center; gap:6px; color: var(--text-faint); font-size:11.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .status-sid{ display:flex; align-items:center; gap:6px; color: var(--text-faint); font-size:11.5px; font-family:ui-monospace, "SF Mono", Menlo, monospace; }
   .status-copy{
     width:24px; height:24px; flex:none; border:0; border-radius:8px; padding:0;
     background:transparent; color: var(--text-soft);
@@ -1138,8 +1138,8 @@
       --avatar-size: 32px;
     }
     .peerpill{ padding: 0 44px; }
-    .peerpill .name{ font-size: 18px; }
-    .peerpill .status{ font-size: 12px; margin-top: 3px; }
+    .peerpill .name{ font-size: 19px; }
+    .peerpill .status{ font-size: 13px; margin-top: 3px; }
     .backbtn{ left: 16px; top: calc(env(safe-area-inset-top) + 16px); width: 32px; height: 32px; }
     .backbtn svg{ width: 20px; height: 20px; }
     .header-actions{ right: 16px; top: calc(env(safe-area-inset-top) + 16px); gap: 26px; height:32px; }
@@ -1150,15 +1150,15 @@
     .row{ margin-top: 18px; }
     .row.grouped{ margin-top: 8px; }
     .row.ai{ padding-left: 42px; }
-    .bubble{ max-width: min(63vw, 520px); font-size: 13.5px; line-height: 1.56; padding: 8px 13px 8px; }
-    .meta{ font-size: 11px; margin-left: 8px; }
-    .day{ font-size: 12px; }
-    .new-divider{ font-size: 12px; margin: 14px 0 10px; }
+    .bubble{ max-width: min(63vw, 520px); font-size: 15.5px; line-height: 1.6; padding: 9px 14px 9px; }
+    .meta{ font-size: 12px; margin-left: 8px; }
+    .day{ font-size: 13px; }
+    .new-divider{ font-size: 13px; margin: 14px 0 10px; }
     .composer{ gap: 5px; padding-left: 16px; padding-right: 16px; }
     .floatbtn{ width: 36px; height: 36px; }
     .floatbtn svg{ width: 20px; height: 20px; }
     .composer .field{ min-height: 42px; padding: 4px 8px 4px 12px; }
-    textarea{ font-size: 15px; }
+    textarea{ font-size: 16px; }
     .emojibtn{ width: 28px; height: 28px; }
     .emojibtn svg{ width: 22px; height: 22px; }
     .row.think{ padding-left: 42px; padding-right: 0; }
@@ -1294,6 +1294,58 @@
     font-size: clamp(10.5px, 2.7vw, 12.5px); font-style:italic;
     letter-spacing:.05em; color: var(--text-faint);
   }
+
+  /* ── Conversation list (home → conversations → chat) ── */
+  .conversation-panel{
+    position:fixed; inset:0; z-index:195;
+    pointer-events:none; opacity:0; transform:translateX(100%);
+    transition:transform .38s var(--ease-soft), opacity .28s ease;
+  }
+  .conversation-panel.open{ pointer-events:auto; opacity:1; transform:none; }
+  .conversation-page{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    color:var(--text); background-color:var(--bg);
+    background-image:var(--menu-wall-default); background-size:cover; background-position:center;
+  }
+  .conversation-page::before{ content:""; position:absolute; inset:0; background:var(--scrim); pointer-events:none; }
+  .conversation-head{
+    position:relative; z-index:1; display:grid; grid-template-columns:44px 1fr auto auto;
+    align-items:center; gap:8px;
+    padding:calc(env(safe-area-inset-top) + 12px) var(--side-pad) 12px;
+    border-bottom:1px solid var(--hairline);
+    background:color-mix(in srgb, var(--bg) 72%, transparent);
+    -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  }
+  .conversation-back,.conversation-add,.conversation-import{
+    border:0; color:var(--text-soft); background:transparent; cursor:pointer;
+    width:40px; height:40px; border-radius:50%; display:grid; place-items:center; font:inherit;
+  }
+  .conversation-back svg,.conversation-add svg,.conversation-import svg{ width:22px; height:22px; }
+  .conversation-title{ margin:0; font-family:var(--font-en),var(--font-cn); font-size:clamp(22px,6vw,30px); font-weight:500; }
+  .conversation-list{
+    position:relative; z-index:1; flex:1 1 auto; overflow-y:auto;
+    padding:18px var(--side-pad) calc(env(safe-area-inset-bottom) + 28px);
+  }
+  .conversation-list::-webkit-scrollbar{ width:0; }
+  .conversation-item{
+    width:100%; display:grid; grid-template-columns:46px minmax(0,1fr) auto;
+    align-items:center; gap:13px; text-align:left; color:var(--text);
+    border:0; border-bottom:1px solid var(--hairline); background:transparent;
+    padding:15px 2px; cursor:pointer; font:inherit;
+  }
+  .conversation-item:active{ background:var(--row-press); }
+  .conversation-orb{
+    width:44px; height:44px; border-radius:50%; background-image:var(--avatar-default);
+    background-size:cover; background-position:center; box-shadow:0 8px 20px rgba(24,46,67,.12);
+  }
+  .conversation-copy{ min-width:0; display:flex; flex-direction:column; gap:4px; }
+  .conversation-name-row{ display:flex; align-items:center; gap:7px; min-width:0; }
+  .conversation-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; }
+  .conversation-readonly{ flex:none; font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); border:1px solid var(--hairline); border-radius:999px; padding:2px 5px; }
+  .conversation-preview{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-faint); font-size:12px; }
+  .conversation-time{ align-self:start; padding-top:2px; color:var(--text-faint); font-size:10.5px; white-space:nowrap; }
+  .conversation-empty{ padding:70px 20px; text-align:center; color:var(--text-faint); line-height:1.8; }
+  .app.readonly-chat .composer{ opacity:.58; pointer-events:none; }
 
   /* ── Voice call (speaking overlay · 假按键 / 纯 UI,后端以后接) ── */
   .call-overlay{
@@ -1941,8 +1993,8 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
             </button>
           </div>
-          <p class="profile-handle"><span>@companion</span></p>
-          <p class="profile-bio">随时在这里，陪你聊聊。</p>
+          <p class="profile-handle"><span>@hannesthedickhead</span></p>
+          <p class="profile-bio">press my face against the glass so hard it should crack.</p>
         </div>
       </div>
 
@@ -2006,14 +2058,6 @@
           <div class="context-scale"><span id="contextCountLabel">保留50条</span><span>最多100条</span></div>
         </div>
       </section>
-
-      <!-- reset（占位 · 假按键）-->
-      <button class="action-row" id="resetRow" type="button">
-        <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg></span>
-        <span class="action-name">reset</span>
-        <span class="action-value">点击后开启新窗口</span>
-        <span class="action-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-      </button>
 
       <!-- swap（占位 · 假按键）-->
       <button class="action-row" id="swapRow" type="button">
@@ -2108,6 +2152,26 @@
       <!-- footer -->
       <div class="menu-foot">in endless tides, we find each other.</div>
     </div>
+  </div>
+</div>
+
+<!-- ── Conversations (between home and chat) ── -->
+<div class="conversation-panel hidden" id="conversationPanel" role="dialog" aria-modal="true" aria-label="对话列表">
+  <div class="conversation-page">
+    <header class="conversation-head">
+      <button class="conversation-back" id="conversationBack" type="button" aria-label="返回主页">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h2 class="conversation-title">Conversations</h2>
+      <button class="conversation-import" id="conversationImport" type="button" aria-label="导入聊天记录" title="导入 JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+      </button>
+      <button class="conversation-add" id="conversationAdd" type="button" aria-label="新建对话" title="新建对话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </header>
+    <div class="conversation-list" id="conversationList"></div>
+    <input class="hidden" id="conversationImportInput" type="file" accept="application/json,.json">
   </div>
 </div>
 
@@ -2280,11 +2344,14 @@ const profileClose = $("#profileClose"), moreBtn = $("#moreBtn");
 const profileAvatarBtn = $("#profileAvatarBtn"), profileNameEl = $("#profileName");
 const profileNameInput = $("#profileNameInput"), profileNameEdit = $("#profileNameEdit");
 const modelSeg = $("#modelSeg"), effortSeg = $("#effortSeg"), contextSlider = $("#contextSlider");
-const resetRow = $("#resetRow"), swapRow = $("#swapRow"), resumeRow = $("#resumeRow");
+const swapRow = $("#swapRow"), resumeRow = $("#resumeRow");
 const statusCopy = $("#statusCopy"), statusSidEl = $("#statusSid"), statusUsedEl = $("#statusUsed");
 const sessionBtn = $("#sessionBtn"), sessionPop = $("#sessionPop"), sessionList = $("#sessionList"), sessionNewBtn = $("#sessionNewBtn");
 const terminalBtn = $("#terminalBtn"), terminalPanel = $("#terminalPanel"), terminalBack = $("#terminalBack"), terminalLog = $("#terminalLog"), terminalForm = $("#terminalForm"), terminalInput = $("#terminalInput"), terminalSession = $("#terminalSession");
 const brainSeg = $("#brainSeg"), brainHint = $("#brainHint");
+const conversationPanel = $("#conversationPanel"), conversationList = $("#conversationList");
+const conversationBack = $("#conversationBack"), conversationAdd = $("#conversationAdd");
+const conversationImport = $("#conversationImport"), conversationImportInput = $("#conversationImportInput");
 
 /* ════════ 固定聊天背景 + 本地头像 ════════ */
 const THEMES = ["light","harbor"];
@@ -2420,6 +2487,7 @@ function refreshDays(){
   if (menuDaysEl) menuDaysEl.textContent = daysTogether();
 }
 let menuCloseTimer = null;
+let conversationCloseTimer = null;
 function openMenu(){
   if (!menuPanel) return;
   refreshDays();
@@ -2433,17 +2501,31 @@ function closeMenu(){
   clearTimeout(menuCloseTimer);
   menuCloseTimer = setTimeout(() => menuPanel.classList.add("hidden"), 400);
 }
+function openConversationList(){
+  if (!conversationPanel) return;
+  renderConversationList();
+  clearTimeout(conversationCloseTimer);
+  conversationPanel.classList.remove("hidden");
+  requestAnimationFrame(() => requestAnimationFrame(() => conversationPanel.classList.add("open")));
+}
+function closeConversationList(){
+  if (!conversationPanel) return;
+  conversationPanel.classList.remove("open");
+  clearTimeout(conversationCloseTimer);
+  conversationCloseTimer = setTimeout(() => conversationPanel.classList.add("hidden"), 400);
+}
 refreshDays();
-if (backBtn) backBtn.addEventListener("click", openMenu);
+if (backBtn) backBtn.addEventListener("click", openConversationList);
 if (menuPanel){
   menuPanel.addEventListener("click", (e) => {
     const item = e.target.closest(".menu-item");
     if (!item) return;
-    if (item.dataset.menu === "chat") closeMenu();       // back to chat
+    if (item.dataset.menu === "chat") { openConversationList(); closeMenu(); }
     else if (item.dataset.menu === "album") location.assign("album.html");  // album shell (wire your own backend)
     else showToast("即将开放");                           // placeholder items
   });
 }
+if (conversationBack) conversationBack.addEventListener("click", () => { closeConversationList(); openMenu(); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && menuPanel && !menuPanel.classList.contains("hidden")) closeMenu();
 });
@@ -3216,14 +3298,6 @@ async function apiContextAction(action, payload = {}){
   return { ok:true, command:{ action, payload } };
 }
 
-if (resetRow) resetRow.addEventListener("click", async () => {
-  if (!window.confirm("确认 reset？这会开启一个全新窗口。")) return;
-  try{
-    await apiContextAction("reset");
-    showToast("reset 已记录");
-    setTimeout(refreshContextStatus, 1200);
-  }catch(_){ showToast("reset 发送失败"); }
-});
 if (swapRow)  swapRow.addEventListener("click", async () => {
   if (!window.confirm("确认 swap？会保留尾部上下文并重启当前窗口。")) return;
   try{
@@ -3404,6 +3478,25 @@ const DOM_EDGE = 600;         // 视口逼近物化边缘到 600 行内 → idle
 const SCROLL_IDLE_MS = 140;   // 滚动停止判定:惯性结束后再做卸载/插入
 const CACHE_DB = "companion-message-cache";
 const CACHE_STORE = "messages";
+const CONVERSATIONS_KEY = "companion_conversations_v1";
+const ACTIVE_CONVERSATION_KEY = "companion_active_conversation_v1";
+const CONVERSATION_MESSAGES_PREFIX = "companion_conversation_messages_v1:";
+const DEFAULT_CONVERSATION_ID = "main";
+function loadConversationIndex(){
+  let rows = [];
+  try{ rows = JSON.parse(localStorage.getItem(CONVERSATIONS_KEY) || "[]"); }catch(_){ rows = []; }
+  if (!Array.isArray(rows) || !rows.length){
+    rows = [{ id:DEFAULT_CONVERSATION_ID, title:"Hannes", createdAt:Date.now(), updatedAt:Date.now(), preview:"", readOnly:false }];
+    try{ localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(rows)); }catch(_){}
+  }
+  return rows;
+}
+let conversations = loadConversationIndex();
+let activeConversationId = (() => {
+  let id = "";
+  try{ id = localStorage.getItem(ACTIVE_CONVERSATION_KEY) || ""; }catch(_){}
+  return conversations.some(c => c.id === id) ? id : conversations[0].id;
+})();
 let chatMessages = [];
 let messageByKey = new Map();
 let virtualRows = [];
@@ -4812,7 +4905,18 @@ function openMessageDb(){
     req.onerror = () => reject(req.error || new Error("indexedDB open"));
   });
 }
-async function readCachedMessages(){
+function conversationMessagesKey(id = activeConversationId){
+  return CONVERSATION_MESSAGES_PREFIX + id;
+}
+function readConversationLocal(id = activeConversationId){
+  try{
+    const raw = localStorage.getItem(conversationMessagesKey(id));
+    if (raw == null) return null;
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows.sort((a, b) => msgNum(a.id) - msgNum(b.id)) : [];
+  }catch(_){ return []; }
+}
+async function readLegacyMessages(){
   try{
     const db = await openMessageDb();
     return await new Promise((resolve, reject) => {
@@ -4822,7 +4926,17 @@ async function readCachedMessages(){
       req.onerror = () => reject(req.error || new Error("indexedDB read"));
       tx.oncomplete = () => db.close();
     });
-  }catch(e){ return []; }
+  }catch(_){ return []; }
+}
+async function readCachedMessages(){
+  const local = readConversationLocal();
+  if (local !== null) return local;
+  if (activeConversationId !== DEFAULT_CONVERSATION_ID) return [];
+  const legacy = await readLegacyMessages();
+  if (legacy.length){
+    try{ localStorage.setItem(conversationMessagesKey(), JSON.stringify(legacy)); }catch(_){}
+  }
+  return legacy;
 }
 function cacheableMessages(){
   return sortedMessages()
@@ -4830,23 +4944,149 @@ function cacheableMessages(){
     .map((m) => ({ id: msgKey(m.id), ts:m.ts, from:m.from, kind:m.kind, text:m.text, meta:m.meta || {} }));
 }
 async function writeMessageCache(){
+  const conversation = currentConversation();
+  if (conversation && conversation.readOnly) return;
+  const items = cacheableMessages();
   try{
-    const db = await openMessageDb();
-    const items = cacheableMessages();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(CACHE_STORE, "readwrite");
-      const store = tx.objectStore(CACHE_STORE);
-      store.clear();
-      items.forEach((m) => store.put(m));
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { db.close(); reject(tx.error || new Error("indexedDB write")); };
-    });
-  }catch(e){}
+    localStorage.setItem(conversationMessagesKey(), JSON.stringify(items));
+    updateConversationSummary(items);
+  }catch(e){ console.error("conversation save failed", e); }
 }
 function scheduleCacheSave(){
   if (cacheTimer) clearTimeout(cacheTimer);
   cacheTimer = setTimeout(writeMessageCache, 400);
 }
+
+function currentConversation(){
+  return conversations.find(c => c.id === activeConversationId) || conversations[0] || null;
+}
+function saveConversationIndex(){
+  try{
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations));
+    localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+  }catch(e){ console.error("conversation index save failed", e); }
+}
+function messagePreview(message){
+  if (!message) return "还没有消息";
+  const text = String(message.text || "").replace(/\s+/g, " ").trim();
+  if (text) return text.slice(0, 90);
+  const atts = message.meta && Array.isArray(message.meta.attachments) ? message.meta.attachments : [];
+  return atts.length ? `[${atts[0].kind === "image" ? "图片" : "附件"}]` : "还没有消息";
+}
+function updateConversationSummary(items = cacheableMessages()){
+  const row = currentConversation();
+  if (!row) return;
+  const last = items[items.length - 1];
+  row.preview = messagePreview(last);
+  row.updatedAt = last ? (Date.parse(last.ts) || Date.now()) : (row.updatedAt || Date.now());
+  if (row.title === "新对话"){
+    const firstUser = items.find(m => m.from === "human" && String(m.text || "").trim());
+    if (firstUser) row.title = String(firstUser.text).replace(/\s+/g, " ").trim().slice(0, 28);
+  }
+  saveConversationIndex();
+  if (conversationPanel && conversationPanel.classList.contains("open")) renderConversationList();
+}
+function formatConversationTime(value){
+  const d = new Date(Number(value) || value || Date.now());
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  return d.toLocaleDateString([], { month:"2-digit", day:"2-digit" });
+}
+function renderConversationList(){
+  if (!conversationList) return;
+  const rows = conversations.slice().sort((a, b) => {
+    if (a.id === activeConversationId) return -1;
+    if (b.id === activeConversationId) return 1;
+    return Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
+  });
+  conversationList.innerHTML = rows.length ? rows.map(c => `
+    <button class="conversation-item" type="button" data-conversation-id="${escapeHtml(c.id)}">
+      <span class="conversation-orb" aria-hidden="true"></span>
+      <span class="conversation-copy">
+        <span class="conversation-name-row"><span class="conversation-name">${escapeHtml(c.title || "新对话")}</span>${c.readOnly ? '<span class="conversation-readonly">read only</span>' : ""}</span>
+        <span class="conversation-preview">${escapeHtml(c.preview || "还没有消息")}</span>
+      </span>
+      <time class="conversation-time">${formatConversationTime(c.updatedAt)}</time>
+    </button>`).join("") : '<div class="conversation-empty">还没有对话。<br>点右上角的＋开始。</div>';
+}
+function makeConversationId(){
+  return (crypto.randomUUID && crypto.randomUUID()) || (`conversation-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+}
+function applyConversationMode(){
+  const readOnly = !!(currentConversation() && currentConversation().readOnly);
+  appEl.classList.toggle("readonly-chat", readOnly);
+  inputEl.disabled = readOnly;
+  sendBtn.disabled = readOnly;
+  if (clipBtn) clipBtn.disabled = readOnly;
+  inputEl.placeholder = readOnly ? "导入的聊天记录为只读" : "Message";
+}
+async function enterConversation(id){
+  const target = conversations.find(c => c.id === id);
+  if (!target) return;
+  if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
+  await writeMessageCache();
+  activeConversationId = target.id;
+  saveConversationIndex();
+  const messages = await readCachedMessages();
+  startChat(messages, { connect:!target.readOnly, fromCache:true });
+  applyConversationMode();
+  closeConversationList();
+}
+async function createConversation(){
+  const now = Date.now();
+  const row = { id:makeConversationId(), title:"新对话", createdAt:now, updatedAt:now, preview:"", readOnly:false };
+  conversations.push(row);
+  try{ localStorage.setItem(conversationMessagesKey(row.id), "[]"); }catch(_){}
+  await enterConversation(row.id);
+}
+function importedText(content){
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map(block => {
+    if (typeof block === "string") return block;
+    if (block && block.type === "text") return block.text || "";
+    if (block && (block.type === "image" || block.type === "image_url")) return "[图片]";
+    return "";
+  }).filter(Boolean).join("\n");
+  return content == null ? "" : JSON.stringify(content);
+}
+async function importConversationFile(file){
+  const parsed = JSON.parse(await file.text());
+  if (!parsed || !Array.isArray(parsed.messages)) throw new Error("JSON 必须包含 messages 数组");
+  const base = Date.now() * 1000;
+  const messages = parsed.messages.map((m, index) => {
+    if (!m || (m.role !== "user" && m.role !== "assistant")) return null;
+    const text = importedText(m.content);
+    return {
+      id:String(base + index),
+      ts:m.timestamp || m.created_at || new Date(Date.now() + index).toISOString(),
+      from:m.role === "user" ? "human" : "ai",
+      kind:m.role === "user" ? "user" : "reply",
+      text,
+      meta:{}
+    };
+  }).filter(Boolean);
+  if (!messages.length) throw new Error("没有可导入的 user/assistant 消息");
+  const id = makeConversationId();
+  const title = String(parsed.title || file.name.replace(/\.json$/i, "") || "导入记录").slice(0, 40);
+  const last = messages[messages.length - 1];
+  localStorage.setItem(conversationMessagesKey(id), JSON.stringify(messages));
+  conversations.push({ id, title, createdAt:Date.now(), updatedAt:Date.parse(last.ts) || Date.now(), preview:messagePreview(last), readOnly:true, imported:true });
+  saveConversationIndex();
+  await enterConversation(id);
+}
+if (conversationList) conversationList.addEventListener("click", e => {
+  const item = e.target.closest("[data-conversation-id]");
+  if (item) void enterConversation(item.dataset.conversationId);
+});
+if (conversationAdd) conversationAdd.addEventListener("click", () => void createConversation());
+if (conversationImport) conversationImport.addEventListener("click", () => conversationImportInput && conversationImportInput.click());
+if (conversationImportInput) conversationImportInput.addEventListener("change", async () => {
+  const file = conversationImportInput.files && conversationImportInput.files[0];
+  conversationImportInput.value = "";
+  if (!file) return;
+  try{ await importConversationFile(file); }
+  catch(e){ alert("导入失败：" + (e.message || e)); }
+});
 
 /* ════════════ 提示音 ════════════
    播放同目录下的 send.mp3(发送/收到共用一个音),用 WebAudio 解码,
@@ -5251,6 +5491,7 @@ async function consumeAnthropicStream(response, aiId){
   return text;
 }
 async function apiSend(text, attachments){
+  if (currentConversation() && currentConversation().readOnly) throw new Error("read-only conversation");
   if (USE_MOCK) return Mock.send(text || "");
   const humanId = localMessageId();
   const aiId = localMessageId();
@@ -5313,6 +5554,7 @@ async function init(){
   const cached = await readCachedMessages();
   if (cached.length){
     startChat(sessionFiltered(cached), { connect:false, fromCache:true });
+    updateConversationSummary(cached);
     showedCache = true;
   }
   try{
@@ -5328,6 +5570,7 @@ async function init(){
     if (String(err.message) !== "401" && !showedCache) showLogin("连不上,请确认密钥。");
     else if (showedCache) startRealtime();
   }
+  applyConversationMode();
 }
 
 /* 回前台重同步:iOS 后台会挂起连接 */
