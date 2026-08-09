@@ -50,6 +50,7 @@
     --menu-wall-harbor: url("menu-harbor.webp");
     --menu-wall-default: var(--menu-wall-light);
     --avatar-default: url("avatar-sea.png");
+    --human-avatar-default: var(--avatar-default);
     /* ── PEARL TIDE · 珍珠潮汐(default) ── */
     --bg: #F7FAFC;
     --header-bg: #F7FAFC;
@@ -486,7 +487,7 @@
     background: var(--hairline);
   }
   .row.grouped{ margin-top: clamp(4px, 0.8vw, 8px); }
-  .row.human{ justify-content: flex-end; }
+  .row.human{ justify-content: flex-end; padding-right: calc(var(--avatar-size) + clamp(10px, 1.6vw, 16px)); }
   .row.ai{ justify-content: flex-start; padding-left: calc(var(--avatar-size) + clamp(10px, 1.6vw, 16px)); }
   .row.ai::before{
     content:"";
@@ -500,6 +501,19 @@
     background-size: cover;
     background-position: center;
     box-shadow: 0 12px 24px rgba(24,46,67,0.14);
+  }
+  .row.human::after{
+    content:"";
+    position:absolute;
+    right:0;
+    top:clamp(5px, 1vw, 9px);
+    width:var(--avatar-size);
+    height:var(--avatar-size);
+    border-radius:50%;
+    background-image:var(--human-avatar-default);
+    background-size:cover;
+    background-position:center;
+    box-shadow:0 12px 24px rgba(24,46,67,.14);
   }
 
   .bubble{
@@ -524,7 +538,7 @@
   @keyframes enterHuman{ from{ transform: translate(6px, 9px) scale(.95); opacity:0; } 55%{ opacity:1; } to{ transform:none; opacity:1; } }
   @keyframes enterAi{ from{ transform: translate(-6px, 9px) scale(.95); opacity:0; } 55%{ opacity:1; } to{ transform:none; opacity:1; } }
   .row.ai .bubble{
-    max-width: 80%;
+    max-width: 86%;
     background: var(--bubble-ai-bg);
     color: var(--bubble-ai-fg);
     border: 0;
@@ -1015,6 +1029,15 @@
     font-family: var(--font-en), var(--font-cn); font-size:13.5px;
   }
   .profile-bio{ margin:0; color: var(--text-soft); font-size:13px; line-height:1.55; }
+  .human-avatar-setting{ display:flex; align-items:center; gap:13px; }
+  .human-avatar-button{
+    width:54px; height:54px; flex:none; border:0; border-radius:50%; padding:0;
+    background-image:var(--human-avatar-default); background-size:cover; background-position:center;
+    box-shadow:0 9px 22px rgba(24,46,67,.14); cursor:pointer;
+  }
+  .human-avatar-copy{ min-width:0; display:flex; flex-direction:column; gap:3px; }
+  .human-avatar-name{ color:var(--text); font-size:15px; font-weight:600; }
+  .human-avatar-hint{ color:var(--text-faint); font-size:11.5px; }
 
   /* setting card */
   .settings-card{
@@ -2099,6 +2122,14 @@
         </div>
       </div>
 
+      <section class="settings-card human-avatar-setting">
+        <button class="human-avatar-button" id="humanAvatarBtn" type="button" aria-label="更改你的头像"></button>
+        <div class="human-avatar-copy">
+          <span class="human-avatar-name" id="humanAvatarName">Kitty</span>
+          <span class="human-avatar-hint">Your avatar in this conversation · tap to edit</span>
+        </div>
+      </section>
+
       <!-- 主题切换 -->
       <section class="settings-card">
         <div class="settings-label">主题</div>
@@ -2190,6 +2221,7 @@
       </div>
     </div>
     <input type="file" id="avatarInput" accept="image/*" class="hidden">
+    <input type="file" id="humanAvatarInput" accept="image/*" class="hidden">
   </div>
 </div>
 
@@ -2487,6 +2519,7 @@ const micBtn = $("#micBtn"), clipBtn = $("#clipBtn"), avatarBtn = $("#avatarBtn"
 const clipInput = $("#clipInput");
 const localPreview = new Map();   // serverUrl -> blob: 本地预览，避免上传后重新下载闪烁
 const avatarInput = $("#avatarInput"), wallEl = $("#wall");
+const humanAvatarInput = $("#humanAvatarInput"), humanAvatarBtn = $("#humanAvatarBtn"), humanAvatarName = $("#humanAvatarName");
 const peerNameEl = $("#peerName"), profilePanel = $("#profilePanel");
 const profileClose = $("#profileClose"), moreBtn = $("#moreBtn");
 const profileAvatarBtn = $("#profileAvatarBtn"), profileNameEl = $("#profileName");
@@ -2511,6 +2544,7 @@ const memoryNewCancel = $("#memoryNewCancel"), memoryNewSave = $("#memoryNewSave
 const THEMES = ["light","harbor"];
 const WALLS = { light: "chat-light.webp", harbor: "chat-harbor.webp" };
 const AVATAR_KEY = "companion_avatar";
+const HUMAN_AVATAR_KEY = "companion_human_avatar";
 const REMARK_KEY = "companion_profile_remark";
 const SESSION_PICK_KEY = "companion_api_session_pick";
 const LEGACY_SESSION_ID = "__legacy__";
@@ -2567,6 +2601,11 @@ function applyAvatar(url){
   const val = url ? `url("${url}")` : 'url("avatar-sea.png")';
   document.documentElement.style.setProperty("--avatar-default", val);
 }
+function applyHumanAvatar(url){
+  const usableUrl = url && !/^path\/to\//.test(url) ? url : "";
+  const val = usableUrl ? `url("${usableUrl}")` : "var(--avatar-default)";
+  document.documentElement.style.setProperty("--human-avatar-default", val);
+}
 function applyRemark(value){
   const name = (value || "").trim() || AI_NAME;
   if (peerNameEl) peerNameEl.textContent = name;
@@ -2586,6 +2625,7 @@ function applyIdentity(){
   setText("#incomingCallText", AI_NAME + "想和你语音通话。");
   setAttr(".incoming-call-avatar", "aria-label", AI_NAME);
   setText(".menu-title", APP_NAME);
+  if (humanAvatarName) humanAvatarName.textContent = HUMAN_NAME;
   const since = document.querySelector(".menu-since");
   if (since) since.textContent = CONFIG.SINCE ? ("since " + CONFIG.SINCE) : "";
 }
@@ -2612,11 +2652,13 @@ try{ localStorage.removeItem("companion_bg"); }catch(e){}
 applyIdentity();
 applyWall(currentWall());
 applyAvatar(localStorage.getItem(AVATAR_KEY) || CONFIG.AI_AVATAR);
+applyHumanAvatar(localStorage.getItem(HUMAN_AVATAR_KEY) || CONFIG.HUMAN_AVATAR);
 applyRemark(localStorage.getItem(REMARK_KEY));
 /* 主题只由日夜 toggle 控制(持久化),不再实时跟随系统;首次打开的初始值由 <head> 早期脚本取一次系统值 */
 if (avatarBtn) avatarBtn.addEventListener("click", openProfile);
 if (moreBtn) moreBtn.addEventListener("click", openProfile);
 if (profileAvatarBtn) profileAvatarBtn.addEventListener("click", () => avatarInput && avatarInput.click());
+if (humanAvatarBtn) humanAvatarBtn.addEventListener("click", () => humanAvatarInput && humanAvatarInput.click());
 if (profileClose) profileClose.addEventListener("click", closeProfile);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && profilePanel && !profilePanel.classList.contains("hidden")) closeProfile();
@@ -3398,6 +3440,18 @@ if (avatarInput) avatarInput.addEventListener("change", () => {
   };
   r.readAsDataURL(f);
   avatarInput.value = "";
+});
+if (humanAvatarInput) humanAvatarInput.addEventListener("change", () => {
+  const file = humanAvatarInput.files && humanAvatarInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result;
+    applyHumanAvatar(dataUrl);
+    try{ localStorage.setItem(HUMAN_AVATAR_KEY, dataUrl); }catch(e){ showToast("头像太大，无法保存"); }
+  };
+  reader.readAsDataURL(file);
+  humanAvatarInput.value = "";
 });
 
 /* ════════ Profile 设置控件 ════════ */
