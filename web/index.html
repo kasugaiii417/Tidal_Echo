@@ -1373,7 +1373,10 @@
   .import-picker-title{ margin:0; font-family:var(--font-en),var(--font-cn); font-size:clamp(20px,5.5vw,27px); font-weight:500; }
   .import-picker-confirm{ border:0; border-radius:999px; padding:8px 13px; color:var(--accent-fg); background:var(--accent); font:inherit; font-size:12px; cursor:pointer; }
   .import-picker-confirm:disabled{ opacity:.45; cursor:default; }
-  .import-picker-summary{ position:relative; z-index:1; padding:13px var(--side-pad) 5px; color:var(--text-faint); font-size:12px; }
+  .import-picker-summary{ position:relative; z-index:1; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; padding:13px var(--side-pad) 7px; color:var(--text-faint); font-size:12px; }
+  .import-limit-control{ flex:none; display:flex; align-items:center; gap:6px; color:var(--text-soft); white-space:nowrap; }
+  .import-limit-input{ width:66px; border:1px solid var(--field-line); border-radius:9px; padding:6px 7px; color:var(--text); background:var(--field-bg); font:inherit; font-size:13px; text-align:center; outline:none; }
+  .import-limit-input:focus{ border-color:var(--accent); }
   .import-picker-list{ position:relative; z-index:1; flex:1 1 auto; overflow-y:auto; padding:5px var(--side-pad) calc(env(safe-area-inset-bottom) + 28px); }
   .import-picker-list::-webkit-scrollbar{ width:0; }
   .import-picker-row{ display:grid; grid-template-columns:24px minmax(0,1fr); gap:11px; align-items:start; padding:15px 2px; border-bottom:1px solid var(--hairline); cursor:pointer; }
@@ -2278,7 +2281,10 @@
         <h2 class="import-picker-title">Import conversations</h2>
         <button class="import-picker-confirm" id="importPickerConfirm" type="button" disabled>Import</button>
       </header>
-      <div class="import-picker-summary" id="importPickerSummary"></div>
+      <div class="import-picker-summary">
+        <span id="importPickerSummary"></span>
+        <label class="import-limit-control">Last <input class="import-limit-input" id="importMessageLimit" type="number" min="1" step="1" value="200" inputmode="numeric" aria-label="每个对话导入的最近消息数"> messages</label>
+      </div>
       <div class="import-picker-list" id="importPickerList"></div>
     </section>
   </div>
@@ -2495,7 +2501,7 @@ const conversationPanel = $("#conversationPanel"), conversationList = $("#conver
 const conversationBack = $("#conversationBack"), conversationAdd = $("#conversationAdd");
 const conversationImport = $("#conversationImport"), conversationImportInput = $("#conversationImportInput");
 const importPicker = $("#importPicker"), importPickerBack = $("#importPickerBack"), importPickerConfirm = $("#importPickerConfirm");
-const importPickerSummary = $("#importPickerSummary"), importPickerList = $("#importPickerList");
+const importPickerSummary = $("#importPickerSummary"), importPickerList = $("#importPickerList"), importMessageLimit = $("#importMessageLimit");
 const memoryPanel = $("#memoryPanel"), memoryBack = $("#memoryBack"), memoryAdd = $("#memoryAdd"), memoryList = $("#memoryList");
 const systemPromptInput = $("#systemPromptInput"), systemPromptHint = $("#systemPromptHint");
 const memoryNewEditor = $("#memoryNewEditor"), memoryNewContent = $("#memoryNewContent");
@@ -5387,6 +5393,19 @@ function updateImportPickerSelection(){
     importPickerConfirm.textContent = count ? `Import ${count}` : "Import";
   }
 }
+function selectedImportMessageLimit(){
+  const value = Math.floor(Number(importMessageLimit && importMessageLimit.value));
+  return Number.isFinite(value) && value > 0 ? value : 200;
+}
+function updateImportLimitPreview(){
+  const limit = selectedImportMessageLimit();
+  if (importPickerList){
+    importPickerList.querySelectorAll("[data-import-total]").forEach(meta => {
+      const total = Number(meta.dataset.importTotal) || 0;
+      meta.textContent = `${meta.dataset.importDate} · importing ${Math.min(total, limit)} of ${total} messages`;
+    });
+  }
+}
 function openImportPicker(items){
   pendingImportConversations = items;
   if (!importPicker || !importPickerList) return;
@@ -5396,12 +5415,13 @@ function openImportPicker(items){
       <input type="checkbox" data-import-index="${index}" checked>
       <span class="import-picker-copy">
         <span class="import-picker-name">${escapeHtml(item.title)}</span>
-        <span class="import-picker-meta">${escapeHtml(new Date(item.updatedAt).toLocaleString())} · ${item.messages.length} messages</span>
+        <span class="import-picker-meta" data-import-total="${item.messages.length}" data-import-date="${escapeHtml(new Date(item.updatedAt).toLocaleString())}"></span>
         <span class="import-picker-preview">${escapeHtml(item.preview || "No preview")}</span>
       </span>
     </label>`).join("");
   importPicker.classList.add("open");
   updateImportPickerSelection();
+  updateImportLimitPreview();
 }
 async function importConversationFile(file){
   const parsed = JSON.parse(await file.text());
@@ -5417,12 +5437,18 @@ async function importConversationFile(file){
 function commitSelectedImports(){
   const selected = selectedImportIndexes().map(index => pendingImportConversations[index]).filter(Boolean);
   if (!selected.length) return;
+  const limit = selectedImportMessageLimit();
   const rows = selected.map(item => {
+    const messages = item.messages.slice(-limit);
     const id = makeConversationId();
-    localStorage.setItem(conversationMessagesKey(id), JSON.stringify(item.messages));
+    localStorage.setItem(conversationMessagesKey(id), JSON.stringify(messages));
+    const firstTimestamp = Date.parse(messages[0]?.ts);
+    const lastTimestamp = Date.parse(messages[messages.length - 1]?.ts);
     return {
-      id, title:item.title, createdAt:item.createdAt, updatedAt:item.updatedAt,
-      preview:item.preview, readOnly:true, imported:true
+      id, title:item.title,
+      createdAt:Number.isFinite(firstTimestamp) ? firstTimestamp : item.createdAt,
+      updatedAt:Number.isFinite(lastTimestamp) ? lastTimestamp : item.updatedAt,
+      preview:messagePreview(messages[messages.length - 1]), readOnly:true, imported:true
     };
   });
   conversations.push(...rows);
@@ -5451,6 +5477,11 @@ if (conversationAdd) conversationAdd.addEventListener("click", () => void create
 if (conversationImport) conversationImport.addEventListener("click", () => conversationImportInput && conversationImportInput.click());
 if (importPickerBack) importPickerBack.addEventListener("click", closeImportPicker);
 if (importPickerList) importPickerList.addEventListener("change", updateImportPickerSelection);
+if (importMessageLimit) importMessageLimit.addEventListener("input", updateImportLimitPreview);
+if (importMessageLimit) importMessageLimit.addEventListener("change", () => {
+  importMessageLimit.value = String(selectedImportMessageLimit());
+  updateImportLimitPreview();
+});
 if (importPickerConfirm) importPickerConfirm.addEventListener("click", commitSelectedImports);
 if (conversationImportInput) conversationImportInput.addEventListener("change", async () => {
   const file = conversationImportInput.files && conversationImportInput.files[0];
