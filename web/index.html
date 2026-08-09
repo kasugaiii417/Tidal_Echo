@@ -509,6 +509,7 @@
     position: relative;
     font-family: var(--font-cn);
     font-size: clamp(14px, 1.55vw, 16px);
+    font-weight: 500;
     line-height: 1.58;
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -2495,6 +2496,7 @@ function refreshDays(){
 }
 let menuCloseTimer = null;
 let conversationCloseTimer = null;
+let pageTransitionTimer = null;
 function openMenu(){
   if (!menuPanel) return;
   refreshDays();
@@ -2521,18 +2523,30 @@ function closeConversationList(){
   clearTimeout(conversationCloseTimer);
   conversationCloseTimer = setTimeout(() => conversationPanel.classList.add("hidden"), 400);
 }
+function showConversationsFromMenu(){
+  clearTimeout(pageTransitionTimer);
+  openConversationList();
+  // Keep Home underneath until Conversations has fully covered the viewport.
+  pageTransitionTimer = setTimeout(closeMenu, 420);
+}
+function showMenuFromConversations(){
+  clearTimeout(pageTransitionTimer);
+  openMenu();
+  // Let Home settle underneath before sliding Conversations away.
+  pageTransitionTimer = setTimeout(closeConversationList, 400);
+}
 refreshDays();
 if (backBtn) backBtn.addEventListener("click", openConversationList);
 if (menuPanel){
   menuPanel.addEventListener("click", (e) => {
     const item = e.target.closest(".menu-item");
     if (!item) return;
-    if (item.dataset.menu === "chat") { openConversationList(); closeMenu(); }
+    if (item.dataset.menu === "chat") showConversationsFromMenu();
     else if (item.dataset.menu === "album") location.assign("album.html");  // album shell (wire your own backend)
     else showToast("即将开放");                           // placeholder items
   });
 }
-if (conversationBack) conversationBack.addEventListener("click", () => { closeConversationList(); openMenu(); });
+if (conversationBack) conversationBack.addEventListener("click", showMenuFromConversations);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && menuPanel && !menuPanel.classList.contains("hidden")) closeMenu();
 });
@@ -3735,17 +3749,17 @@ async function terminalSend(){
   terminalInput.style.height = "auto";
   const payload = `${TERMINAL_WRAP}\ncommand: ${text}\n\nTreat this as a command typed into the pseudo terminal. If tool access is available, run it safely and reply with concise stdout/stderr/exit code.`;
   const optimisticTs = Date.now();
-  const tempKey = "pending-terminal-" + (++optimisticSeq);
+  const tempKey = msgKey(localMessageId());
   const sid = effectiveApiSession();
   const optimisticMeta = sid ? { api_session: sid } : {};
   const optimistic = { id: tempKey, ts: new Date(optimisticTs).toISOString(), from:"human", kind:"user", text:payload, meta:optimisticMeta, status:"sending" };
   seen.add(tempKey);
-  setMessage(optimistic, { render:false, cache:false });
+  setMessage(optimistic, { render:false, cache:true });
   rememberPendingOutgoing(tempKey, payload, optimisticTs);
   scheduleRender({ stickToBottom:true });
   scheduleTerminalRender({ stickToBottom:true });
   try{
-    const { id } = await apiSend(payload);
+    const { id } = await apiSend(payload, null, Number(tempKey));
     confirmOptimistic(tempKey, msgKey(id));
     dropPendingOutgoing(tempKey);
   }catch(err){
@@ -4947,7 +4961,7 @@ async function readCachedMessages(){
 }
 function cacheableMessages(){
   return sortedMessages()
-    .filter((m) => msgNum(m.id) > 0 && m.status !== "sending" && m.status !== "failed")
+    .filter((m) => msgNum(m.id) > 0 && m.status !== "failed" && m.status !== "streaming")
     .map((m) => ({ id: msgKey(m.id), ts:m.ts, from:m.from, kind:m.kind, text:m.text, meta:m.meta || {} }));
 }
 async function writeMessageCache(){
@@ -5040,6 +5054,8 @@ async function enterConversation(id){
   const messages = await readCachedMessages();
   startChat(messages, { connect:!target.readOnly, fromCache:true });
   applyConversationMode();
+  clearTimeout(pageTransitionTimer);
+  closeMenu();
   closeConversationList();
 }
 async function createConversation(){
@@ -5235,19 +5251,19 @@ async function doSend(){
   micBtn.classList.add("hidden");
 
   const optimisticTs = Date.now();
-  const tempKey = "pending-" + (++optimisticSeq);
+  const tempKey = msgKey(localMessageId());
   const currentSid = effectiveApiSession();
   const optimisticMeta = currentSid ? { api_session: currentSid } : {};
   const optimistic = { id: tempKey, ts: new Date(optimisticTs).toISOString(), from:"human", kind:"user", text, meta:optimisticMeta, status:"sending" };
   seen.add(tempKey);
-  setMessage(optimistic, { render:false, cache:false });
+  setMessage(optimistic, { render:false, cache:true });
   freshKeys.add(tempKey);        // 入场弹一下
   playSendSound();               // 发出反馈音
   rememberPendingOutgoing(tempKey, text, optimisticTs);
   scheduleRender({ stickToBottom:true });
 
   try{
-    const { id } = await apiSend(text);
+    const { id } = await apiSend(text, null, Number(tempKey));
     const key = msgKey(id);
     confirmOptimistic(tempKey, key);
     dropPendingOutgoing(tempKey);
@@ -5305,14 +5321,14 @@ async function sendOneFile(file){
   const kind = image ? "image" : "file";
   const localUrl = image ? URL.createObjectURL(blob) : "";
   const optimisticTs = Date.now();
-  const tempKey = "pending-" + (++optimisticSeq);
+  const tempKey = msgKey(localMessageId());
   const att0 = { url: "", localUrl: localUrl, name: name, size: blob.size, mime: mime, kind: kind, width: imgW, height: imgH, uploading: true };
   const currentSid = effectiveApiSession();
   const optimisticMeta = { attachments: [att0] };
   if (currentSid) optimisticMeta.api_session = currentSid;
   const optimistic = { id: tempKey, ts: new Date(optimisticTs).toISOString(), from: "human", kind: "user", text: "", meta: optimisticMeta, status: "sending" };
   seen.add(tempKey);
-  setMessage(optimistic, { render: false, cache: false });
+  setMessage(optimistic, { render: false, cache: true });
   freshKeys.add(tempKey);
   playSendSound();
   scheduleRender({ stickToBottom: true });
@@ -5321,7 +5337,7 @@ async function sendOneFile(file){
     if (localUrl && up && up.url) localPreview.set(up.url, localUrl);
     const finalAtt = { url: up.url, name: up.name, size: up.size, mime: up.mime, kind: up.kind, width: imgW, height: imgH };
     rememberPendingOutgoing(tempKey, "", optimisticTs);
-    const { id } = await apiSend("", [finalAtt]);
+    const { id } = await apiSend("", [finalAtt], Number(tempKey));
     const finalMeta = { attachments: [finalAtt] };
     if (currentSid) finalMeta.api_session = currentSid;
     confirmOptimistic(tempKey, msgKey(id), { id: id, ts: optimistic.ts, from: "human", kind: "user", text: "", meta: finalMeta, status: "sent" });
@@ -5491,6 +5507,14 @@ async function consumeAnthropicStream(response, aiId){
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "", eventName = "", dataLines = [], text = "";
+  let streamPaintTimer = null;
+  const paintStream = () => {
+    streamPaintTimer = null;
+    setMessage({ id:aiId, ts:new Date().toISOString(), from:"ai", kind:"reply", text, meta:{}, status:"streaming" }, { cache:false });
+  };
+  const scheduleStreamPaint = () => {
+    if (!streamPaintTimer) streamPaintTimer = setTimeout(paintStream, STREAM_FLUSH_MS);
+  };
   const flush = () => {
     if (!dataLines.length) return;
     const raw = dataLines.join("\n"); dataLines = [];
@@ -5499,7 +5523,7 @@ async function consumeAnthropicStream(response, aiId){
       const ev = JSON.parse(raw);
       if ((eventName === "content_block_delta" || ev.type === "content_block_delta") && ev.delta && ev.delta.type === "text_delta"){
         text += ev.delta.text || "";
-        setMessage({ id:aiId, ts:new Date().toISOString(), from:"ai", kind:"reply", text, meta:{}, status:"streaming" });
+        scheduleStreamPaint();
       }
     }catch(_){ /* ignore keepalives and non-JSON frames */ }
     eventName = "";
@@ -5517,6 +5541,7 @@ async function consumeAnthropicStream(response, aiId){
   }
   if (buffer.startsWith("data:")) dataLines.push(buffer.slice(5).trimStart());
   flush();
+  if (streamPaintTimer){ clearTimeout(streamPaintTimer); streamPaintTimer = null; }
   if (!text) throw new Error("Gateway returned no text");
   const chunks = text.split("\n\n").map(chunk => chunk.trim()).filter(Boolean);
   removeMessage(aiId, { render:false, cache:false });
@@ -5539,10 +5564,10 @@ async function consumeAnthropicStream(response, aiId){
   playReceiveSound();
   return text;
 }
-async function apiSend(text, attachments){
+async function apiSend(text, attachments, reservedHumanId){
   if (currentConversation() && currentConversation().readOnly) throw new Error("read-only conversation");
   if (USE_MOCK) return Mock.send(text || "");
-  const humanId = localMessageId();
+  const humanId = Number(reservedHumanId) > 0 ? Number(reservedHumanId) : localMessageId();
   const aiId = localMessageId();
   showTyping();
   try{
