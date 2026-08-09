@@ -2235,7 +2235,7 @@ const CONFIG = {
   HUMAN_AVATAR: "path/to/kitty-avatar.png",
   SINCE:        "2025/02/10",
   GATEWAY_URL:  "https://hannes-gateway.chenv354.workers.dev",
-  MODEL:        "claude-opus-4-0520",
+  MODEL:        "claude-opus-4-6",
 };
 const AI_NAME = CONFIG.AI_NAME, HUMAN_NAME = CONFIG.HUMAN_NAME, APP_NAME = CONFIG.APP_NAME;
 
@@ -5226,6 +5226,7 @@ async function consumeAnthropicStream(response, aiId){
   return text;
 }
 async function apiSend(text, attachments){
+  alert("SENDING TO: " + GATEWAY_URL);
   if (USE_MOCK) return Mock.send(text || "");
   const humanId = localMessageId();
   const aiId = localMessageId();
@@ -5238,13 +5239,30 @@ async function apiSend(text, attachments){
         content:gatewayContentForMessage({ text:text || "", meta:{ attachments } })
       };
     }
-    const r = await fetch(GATEWAY_URL, {
-      method:"POST",
-      headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"text/event-stream" },
-      body:JSON.stringify({ messages, model:CONFIG.MODEL, stream:true })
-    });
+    let r;
+    try{
+      r = await fetch(GATEWAY_URL, {
+        method:"POST",
+        headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"text/event-stream" },
+        body:JSON.stringify({ messages, model:CONFIG.MODEL, stream:true })
+      });
+    }catch(e){
+      alert("FETCH ERROR: " + (e.message || JSON.stringify(e)));
+      document.title = "ERR: " + (e.message || e);
+      throw e;
+    }
     if (r.status === 401 || r.status === 403){ handle401(); throw new Error(String(r.status)); }
-    if (!r.ok) throw new Error("gateway " + r.status);
+    if (!r.ok){
+      const errorText = await r.clone().text();
+      console.error("GATEWAY ERROR:", {
+        status:r.status,
+        statusText:r.statusText,
+        body:errorText,
+        headers:Object.fromEntries(r.headers.entries())
+      });
+      alert("GATEWAY " + r.status + "\n\n" + errorText.slice(0, 2000));
+      throw new Error("gateway " + r.status + ": " + errorText);
+    }
     await consumeAnthropicStream(r, aiId);
     return { id:humanId };
   }finally{
