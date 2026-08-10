@@ -2251,7 +2251,7 @@
       <section class="settings-card">
         <div class="settings-label">上下文轮次 <i class="info-i" title="保留最近 N 条用户消息，以及每条之后的全部 Assistant 回复气泡">i</i></div>
         <div class="context-slider-wrap">
-          <input class="context-slider" id="contextSlider" type="range" min="10" max="100" value="50" aria-label="保留用户轮次数量">
+          <input class="context-slider" id="contextSlider" type="range" min="1" max="100" value="50" aria-label="保留用户轮次数量">
           <div class="context-scale"><span id="contextCountLabel">保留50轮</span><span>最多100轮</span></div>
         </div>
       </section>
@@ -3658,7 +3658,7 @@ if (contextSlider){
 
 function contextTurnLimit(){
   const value = Number(contextSlider ? contextSlider.value : 50);
-  return Math.max(10, Math.min(100, Number.isFinite(value) ? Math.round(value) : 50));
+  return Math.max(1, Math.min(100, Number.isFinite(value) ? Math.round(value) : 50));
 }
 
 function shortSid(sid){
@@ -6273,8 +6273,8 @@ function handle401(){
 }
 
 function showLogin(msg){
-  loginEl.classList.add("hidden");
-  appEl.classList.remove("hidden");
+  loginEl.classList.remove("hidden");
+  appEl.classList.add("hidden");
   $("#loginErr").textContent = msg || "";
   $("#secretInput").value = "";
   setTimeout(() => $("#secretInput").focus(), 80);
@@ -6615,7 +6615,7 @@ async function apiTts(text){
 function startRealtime(){ connected = true; setConn("online"); }
 
 async function init(){
-  //if (!secret){ showLogin(); return; }
+  if (!secret){ showLogin(); return; }
   await loadSessions();
   loadBrain();
   let showedCache = false;
