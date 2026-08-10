@@ -887,6 +887,15 @@
     font:11px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  .tool-method{
+    flex:none;
+    font:600 9.5px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--accent-fg);
+    background:var(--accent);
+    border-radius:6px;
+    padding:3px 5px;
+    letter-spacing:.02em;
+  }
   .tool-result{
     margin:0; padding:10px 11px;
     border-top:1px solid var(--field-line);
@@ -2681,19 +2690,31 @@ const FETCH_PROXY_URL = "https://fetch-proxy.chenv354canada.workers.dev";
 const TOOLS = [
   {
     name:"fetch_json",
-    description:"Fetch a URL and return the response as JSON.",
+    description:"Make an HTTP request and return the response parsed as JSON. Use for GET (read) or POST/PUT/PATCH (write JSON data into an API or app). When writing, pass method (POST/PUT/PATCH), body as a JSON string, and optionally content_type.",
     input_schema:{
       type:"object",
-      properties:{ url:{ type:"string", description:"The URL to fetch" } },
+      properties:{
+        url:{ type:"string", description:"The URL to request" },
+        method:{ type:"string", enum:["GET","POST","PUT","PATCH","DELETE","HEAD"], description:"HTTP method. Default GET. Use POST/PUT/PATCH when you need to write content." },
+        body:{ type:"string", description:"Request body. For fetch_json, a JSON string — the content you want to write." },
+        content_type:{ type:"string", description:"Content-Type header. Defaults to application/json for fetch_json, text/plain for fetch_txt." },
+        headers:{ type:"object", description:"Additional HTTP headers (optional)." }
+      },
       required:["url"]
     }
   },
   {
     name:"fetch_txt",
-    description:"Fetch a URL and return the response as plain text.",
+    description:"Make an HTTP request and return the response as plain text. Use for GET (read) or POST/PUT/PATCH (write plain text content into an API or app). When writing, pass method (POST/PUT/PATCH) and body (the text content you want to write).",
     input_schema:{
       type:"object",
-      properties:{ url:{ type:"string", description:"The URL to fetch" } },
+      properties:{
+        url:{ type:"string", description:"The URL to request" },
+        method:{ type:"string", enum:["GET","POST","PUT","PATCH","DELETE","HEAD"], description:"HTTP method. Default GET. Use POST/PUT/PATCH when you need to write content." },
+        body:{ type:"string", description:"Request body — the content you want to write." },
+        content_type:{ type:"string", description:"Content-Type header. Defaults to application/json for fetch_json, text/plain for fetch_txt." },
+        headers:{ type:"object", description:"Additional HTTP headers (optional)." }
+      },
       required:["url"]
     }
   }
@@ -4926,14 +4947,26 @@ function toolRequestHtml(meta){
   const input = meta.tool_input || {};
   const keys = Object.keys(input);
   const parts = [];
+  const method = String(input.method || meta.method || "").toUpperCase();
   if (input.title != null){
     parts.push(`<div class="tool-req-title">📄 ${escapeHtml(String(input.title))}</div>`);
   }
+  if (method && method !== "GET"){
+    parts.push(`<div class="tool-req-line"><span class="tool-req-key">method</span><pre class="tool-req-val">${escapeHtml(method)}</pre></div>`);
+  }
+  // 写入内容优先展示——这才是 Hannes 真正写进目标软件的文字/JSON
+  if (input.body != null && String(input.body) !== ""){
+    parts.push(`<div class="tool-req-line"><span class="tool-req-key">📝 写入内容 · written content</span><pre class="tool-req-val">${escapeHtml(String(input.body))}</pre></div>`);
+  }
   if (!keys.length){
-    parts.push(`<div class="tool-req-note">(no parameters)</div>`);
+    if (meta.url){
+      parts.push(`<div class="tool-req-line"><span class="tool-req-key">url</span><pre class="tool-req-val">${escapeHtml(String(meta.url))}</pre></div>`);
+    }else{
+      parts.push(`<div class="tool-req-note">(no parameters)</div>`);
+    }
   }else{
     keys.forEach((k) => {
-      if (k === "title") return;
+      if (k === "title" || k === "method" || k === "body") return;
       let val;
       try{
         val = typeof input[k] === "string" ? escapeHtml(input[k]) : escapeHtml(JSON.stringify(input[k], null, 2));
@@ -4947,9 +4980,14 @@ function makeToolCard(rowData){
   const m = rowData.message;
   const meta = m.meta || {};
   const result = String(meta.result == null ? "" : meta.result);
-  const preview = result.replace(/\s+/g, " ").trim().slice(0, 80) || (meta.error ? "Tool request failed" : "No content");
   const input = meta.tool_input || {};
-  const showRequest = meta.tool_name || Object.keys(input).length;
+  const method = String(input.method || "").toUpperCase();
+  const bodyText = input.body != null ? String(input.body).replace(/\s+/g, " ").trim() : "";
+  const preview = bodyText
+    ? `📝 ${bodyText.slice(0, 80)}`
+    : (result.replace(/\s+/g, " ").trim().slice(0, 80) || (meta.error ? "Tool request failed" : "No content"));
+  const showRequest = meta.tool_name || Object.keys(input).length || meta.url;
+  const methodBadge = method && method !== "GET" ? `<span class="tool-method">${escapeHtml(method)}</span>` : "";
   const reqHtml = toolRequestHtml(meta);
   const row = document.createElement("div");
   row.className = "row tool";
@@ -4957,7 +4995,7 @@ function makeToolCard(rowData){
   row.dataset.from = "ai";
   row.dataset.messageKey = m._key;
   row.innerHTML = `<details class="tool-card${meta.error ? " error" : ""}">
-    <summary><span class="tool-icon" aria-hidden="true">🔗</span><span class="tool-name">${escapeHtml(meta.tool_name || "fetch")}</span><span class="tool-url" title="${escapeHtml(meta.url || "")}">${escapeHtml(meta.url || "")}</span><span class="tool-preview">${escapeHtml(preview)}${result.replace(/\s+/g, " ").trim().length > 80 ? "…" : ""}</span></summary>
+    <summary><span class="tool-icon" aria-hidden="true">🔗</span><span class="tool-name">${escapeHtml(meta.tool_name || "fetch")}</span>${methodBadge}<span class="tool-url" title="${escapeHtml(meta.url || "")}">${escapeHtml(meta.url || "")}</span><span class="tool-preview">${escapeHtml(preview)}${result.replace(/\s+/g, " ").trim().length > 80 ? "…" : ""}</span></summary>
     ${showRequest ? `<details class="tool-request" open><summary><span class="tool-req-label">Request · 请求参数</span></summary><div class="tool-request-body">${reqHtml}</div></details>` : ""}
     <pre class="tool-result">${escapeHtml(result)}</pre>
   </details>`;
@@ -7026,7 +7064,7 @@ async function consumeAnthropicStream(response, aiId, signal){
         const block = blocksByIndex.get(Number(ev.index));
         if (block && block.type === "tool_use" && block._inputJson){
           try{ block.input = JSON.parse(block._inputJson); }
-          catch(_){ block.input = { url:"" }; }
+          catch(_){ /* 保留 content_block_start 里已有的 input,别把参数清空 */ }
         }
       }
       if (eventName === "message_delta" || ev.type === "message_delta"){
@@ -7118,21 +7156,45 @@ async function requestGateway(messages, systemContent, signal){
   return response;
 }
 async function executeFetchTool(toolUse, signal){
+  const input = toolUse.input || {};
   const name = String(toolUse.name || "");
-  const url = String(toolUse.input && toolUse.input.url || "");
+  const url = String(input.url || "");
+  const method = String(input.method || "GET").toUpperCase() || "GET";
   try{
     if (name !== "fetch_json" && name !== "fetch_txt") throw new Error("Unsupported tool: " + name);
     const targetUrl = url.trim().replace(/^["'`]+|["'`]+$/g, "").trim();
     if (!/^https?:\/\//i.test(targetUrl)) throw new Error(`Invalid HTTP(S) URL: ${targetUrl || "(empty)"}`);
-    const proxyUrl = `${FETCH_PROXY_URL}/?url=${encodeURIComponent(targetUrl)}`;
-    const response = await fetch(proxyUrl, { signal });
+    const type = name === "fetch_json" ? "json" : "txt";
+    const headers = (input.headers && typeof input.headers === "object") ? input.headers : {};
+    const contentType = String(input.content_type || "").trim() || (name === "fetch_json" ? "application/json" : "text/plain");
+    const isWrite = method !== "GET" && method !== "HEAD" && method !== "DELETE";
+    let response;
+    if (method === "GET" && !isWrite && input.body == null){
+      // 纯读取:保持现有 GET 代理形态
+      response = await fetch(`${FETCH_PROXY_URL}/?url=${encodeURIComponent(targetUrl)}`, { signal });
+    }else{
+      // 写入(POST/PUT/PATCH/DELETE / 带 body / 带自定义头):走代理的 POST JSON 协议
+      response = await fetch(FETCH_PROXY_URL, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Accept":name === "fetch_json" ? "application/json" : "text/plain" },
+        body:JSON.stringify({
+          url:targetUrl,
+          method,
+          type,
+          ...(input.body != null ? { body:String(input.body) } : {}),
+          ...(contentType ? { content_type:contentType } : {}),
+          ...(Object.keys(headers).length ? { headers } : {})
+        }),
+        signal
+      });
+    }
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
     const value = name === "fetch_json" ? await response.json() : await response.text();
     const result = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-    return { toolUse, url:targetUrl, result, error:false };
+    return { toolUse, url:targetUrl, method, input, result, error:false };
   }catch(error){
     if (signal && signal.aborted) throw error;
-    return { toolUse, url, result:`Tool error: ${error.message || error}`, error:true };
+    return { toolUse, url, method, input, result:`Tool error: ${error.message || error}`, error:true };
   }
 }
 function renderToolExecution(execution){
