@@ -859,10 +859,11 @@
     width:min(78vw, 500px);
     border:1px solid var(--field-line);
     border-radius:14px;
-    background:rgba(127,127,127,.08);
+    background:rgba(220,228,235,.62);
+    background:color-mix(in srgb, var(--bubble-ai-bg) 74%, transparent);
     color:var(--think-body);
     overflow:hidden;
-    opacity:.92;
+    box-shadow:0 7px 18px rgba(46,62,78,.08);
   }
   .tool-card summary{
     list-style:none;
@@ -5493,7 +5494,7 @@ function applyReaction(ev){
   }
   scrollEl.addEventListener("touchstart", (e) => {
     if (isOpen() || e.touches.length !== 1) return;          // 多指(缩放)不触发
-    const bubble = e.target.closest(".bubble");
+    const bubble = e.target.closest(".bubble, .tool-card");
     if (!bubble || !scrollEl.contains(bubble) || e.target.closest("a")) return;
     pressBubble = bubble;
     const t = e.touches[0]; startX = t.clientX; startY = t.clientY;
@@ -5510,7 +5511,7 @@ function applyReaction(ev){
 
   // 桌面右键
   scrollEl.addEventListener("contextmenu", (e) => {
-    const bubble = e.target.closest(".bubble");
+    const bubble = e.target.closest(".bubble, .tool-card");
     if (!bubble || !scrollEl.contains(bubble)) return;
     if (!bubbleInfo(bubble)) return;
     e.preventDefault();
@@ -6631,8 +6632,21 @@ function gatewayContentForMessage(m, includeTimestamp = false){
 }
 function gatewayHistoryMessages(){
   return sortedMessages()
-    .filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.kind !== "tool" && m.status !== "failed")
-    .map(m => ({ role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m, m.from === "human") }));
+    .filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.status !== "failed")
+    .map(m => {
+      if (m.kind === "tool"){
+        const meta = m.meta || {};
+        const lines = [
+          `[Tool call: ${meta.tool_name || "fetch"}]`,
+          `URL: ${meta.url || ""}`,
+          meta.error ? "Status: error" : "Status: success",
+          "Result:",
+          String(meta.result == null ? "" : meta.result)
+        ];
+        return { role:"assistant", content:lines.join("\n") };
+      }
+      return { role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m, m.from === "human") };
+    });
 }
 function keepRecentUserTurns(history, limit){
   let remaining = limit;
