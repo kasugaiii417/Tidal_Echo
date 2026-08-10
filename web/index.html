@@ -2610,6 +2610,7 @@ const AI_NAME = CONFIG.AI_NAME, HUMAN_NAME = CONFIG.HUMAN_NAME, APP_NAME = CONFI
 
 const GATEWAY_URL = CONFIG.GATEWAY_URL.replace(/\/$/, "");
 const TTS_URL = new URL("/api/tts", GATEWAY_URL).toString();
+const FETCH_PROXY_URL = "https://fetch-proxy.chenv354.workers.dev";
 const TOOLS = [
   {
     name:"fetch_json",
@@ -6755,7 +6756,12 @@ async function executeFetchTool(toolUse, signal){
     if (name !== "fetch_json" && name !== "fetch_txt") throw new Error("Unsupported tool: " + name);
     const parsedUrl = new URL(url);
     if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") throw new Error("Only HTTP(S) URLs are supported");
-    const response = await fetch(parsedUrl.toString(), { signal });
+    const response = await fetch(FETCH_PROXY_URL, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Accept":name === "fetch_json" ? "application/json" : "text/plain" },
+      body:JSON.stringify({ url:parsedUrl.toString(), type:name === "fetch_json" ? "json" : "txt" }),
+      signal
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
     const value = name === "fetch_json" ? await response.json() : await response.text();
     const result = typeof value === "string" ? value : JSON.stringify(value, null, 2);
