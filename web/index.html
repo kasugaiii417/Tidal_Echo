@@ -894,6 +894,54 @@
     font:11px/1.55 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     white-space:pre-wrap; overflow-wrap:anywhere; max-height:45vh; overflow:auto;
   }
+  .tool-request{
+    border-top:1px solid var(--field-line);
+    font-size:11px;
+  }
+  .tool-request summary{
+    grid-template-columns:auto 1fr;
+    gap:7px;
+    cursor:pointer;
+    padding:6px 11px;
+    font-size:11px;
+    color:var(--text-soft);
+    background:rgba(0,0,0,.035);
+  }
+  .tool-request summary::-webkit-details-marker{ display:none; }
+  .tool-req-label{
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-weight:600;
+    color:var(--text-soft);
+  }
+  .tool-request-body{
+    padding:6px 11px;
+    background:rgba(0,0,0,.015);
+  }
+  .tool-req-title{
+    font:600 12px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--think-body);
+    margin-bottom:6px;
+    word-break:break-word;
+  }
+  .tool-req-line{ margin:4px 0; }
+  .tool-req-key{
+    font:600 11px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--text-soft);
+  }
+  .tool-req-val{
+    margin:2px 0 0;
+    padding:6px 8px;
+    background:rgba(0,0,0,.05);
+    border-radius:8px;
+    font:11px/1.55 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--think-body);
+    white-space:pre-wrap; overflow-wrap:anywhere;
+    max-height:30vh; overflow:auto;
+  }
+  .tool-req-note{
+    font:11px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--text-faint);
+  }
   .tool-card.error{ border-color:rgba(192,83,63,.35); }
 
 
@@ -4874,11 +4922,35 @@ function makeAct(rowData){
   row.appendChild(block);
   return row;
 }
+function toolRequestHtml(meta){
+  const input = meta.tool_input || {};
+  const keys = Object.keys(input);
+  const parts = [];
+  if (input.title != null){
+    parts.push(`<div class="tool-req-title">📄 ${escapeHtml(String(input.title))}</div>`);
+  }
+  if (!keys.length){
+    parts.push(`<div class="tool-req-note">(no parameters)</div>`);
+  }else{
+    keys.forEach((k) => {
+      if (k === "title") return;
+      let val;
+      try{
+        val = typeof input[k] === "string" ? escapeHtml(input[k]) : escapeHtml(JSON.stringify(input[k], null, 2));
+      }catch(_){ val = escapeHtml(String(input[k])); }
+      parts.push(`<div class="tool-req-line"><span class="tool-req-key">${escapeHtml(k)}</span><pre class="tool-req-val">${val}</pre></div>`);
+    });
+  }
+  return parts.join("");
+}
 function makeToolCard(rowData){
   const m = rowData.message;
   const meta = m.meta || {};
   const result = String(meta.result == null ? "" : meta.result);
   const preview = result.replace(/\s+/g, " ").trim().slice(0, 80) || (meta.error ? "Tool request failed" : "No content");
+  const input = meta.tool_input || {};
+  const showRequest = meta.tool_name || Object.keys(input).length;
+  const reqHtml = toolRequestHtml(meta);
   const row = document.createElement("div");
   row.className = "row tool";
   row.dataset.id = m.id;
@@ -4886,9 +4958,10 @@ function makeToolCard(rowData){
   row.dataset.messageKey = m._key;
   row.innerHTML = `<details class="tool-card${meta.error ? " error" : ""}">
     <summary><span class="tool-icon" aria-hidden="true">🔗</span><span class="tool-name">${escapeHtml(meta.tool_name || "fetch")}</span><span class="tool-url" title="${escapeHtml(meta.url || "")}">${escapeHtml(meta.url || "")}</span><span class="tool-preview">${escapeHtml(preview)}${result.replace(/\s+/g, " ").trim().length > 80 ? "…" : ""}</span></summary>
+    ${showRequest ? `<details class="tool-request" open><summary><span class="tool-req-label">Request · 请求参数</span></summary><div class="tool-request-body">${reqHtml}</div></details>` : ""}
     <pre class="tool-result">${escapeHtml(result)}</pre>
   </details>`;
-  row.querySelector("details").addEventListener("toggle", () => measureVisibleRows({ stickToBottom:nearBottom() }));
+  row.querySelectorAll("details").forEach(d => d.addEventListener("toggle", () => measureVisibleRows({ stickToBottom:nearBottom() })));
   return row;
 }
 function makeMessage(rowData){
@@ -7073,6 +7146,7 @@ function renderToolExecution(execution){
     meta:{
       tool_use_id:execution.toolUse.id,
       tool_name:execution.toolUse.name,
+      tool_input:execution.toolUse.input || {},
       url:execution.url,
       result:execution.result,
       error:execution.error
