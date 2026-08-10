@@ -2545,6 +2545,7 @@ const CONFIG = {
 const AI_NAME = CONFIG.AI_NAME, HUMAN_NAME = CONFIG.HUMAN_NAME, APP_NAME = CONFIG.APP_NAME;
 
 const GATEWAY_URL = CONFIG.GATEWAY_URL.replace(/\/$/, "");
+const TTS_URL = new URL("/api/tts", GATEWAY_URL).toString();
 const USE_MOCK  = false;          // true = self-contained demo with fake data (no backend needed)
 const LS_KEY    = "companion_secret";
 
@@ -6601,7 +6602,7 @@ async function apiVoiceText(text){ return apiSend(text); }
 async function apiVoiceBlob(){ throw new Error("Voice gateway hook is not configured"); }
 async function apiCallEvent(){ return { ok:true }; }
 async function apiTts(text){
-  const response = await fetch("/api/tts", {
+  const response = await fetch(TTS_URL, {
     method:"POST",
     headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"audio/mpeg" },
     body:JSON.stringify({ text:String(text || "") })
