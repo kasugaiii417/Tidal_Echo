@@ -51,6 +51,8 @@
     --menu-wall-default: var(--menu-wall-light);
     --avatar-default: url("avatar-sea.png");
     --human-avatar-default: var(--avatar-default);
+    --custom-wall-image: none;
+    --custom-wall-opacity: 0;
     /* ── PEARL TIDE · 珍珠潮汐(default) ── */
     --bg: #F7FAFC;
     --header-bg: #F7FAFC;
@@ -180,6 +182,11 @@
   }
   .wall::after{
     content:""; position:absolute; inset:0; background: var(--scrim); pointer-events:none;
+  }
+  .wall::before{
+    content:""; position:absolute; inset:0;
+    background-image:var(--custom-wall-image); background-size:cover; background-position:center;
+    opacity:var(--custom-wall-opacity); pointer-events:none;
   }
   .topbar, .scroll, .composer{ position: relative; z-index: 1; }
 
@@ -1069,6 +1076,15 @@
     margin-top:9px; font-size:11.5px; line-height:1.55;
     color: var(--text-faint); letter-spacing:.01em;
   }
+  .custom-wall-controls{ margin-top:14px; padding-top:13px; border-top:1px solid var(--hairline); }
+  .custom-wall-actions{ display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .custom-wall-button{
+    border:1px solid var(--hairline); border-radius:10px; padding:7px 11px;
+    color:var(--text-soft); background:rgba(255,255,255,.28); font:inherit; font-size:11.5px; cursor:pointer;
+  }
+  .custom-wall-button:disabled{ opacity:.38; cursor:default; }
+  .custom-wall-opacity-head{ display:flex; justify-content:space-between; gap:12px; color:var(--text-faint); font-size:11.5px; }
+  .custom-wall-slider:disabled{ opacity:.35; cursor:default; }
 
   /* segmented control */
   .segmented{
@@ -2140,6 +2156,14 @@
           <button type="button" data-val="light">珍珠</button>
           <button type="button" data-val="harbor">海港</button>
         </div>
+        <div class="custom-wall-controls">
+          <div class="custom-wall-actions">
+            <button class="custom-wall-button" id="customWallUpload" type="button">Upload chat background</button>
+            <button class="custom-wall-button" id="customWallReset" type="button">恢复主题背景</button>
+          </div>
+          <div class="custom-wall-opacity-head"><span>自定义背景透明度</span><span id="customWallOpacityLabel">100%</span></div>
+          <input class="context-slider custom-wall-slider" id="customWallOpacity" type="range" min="0" max="100" value="100" aria-label="自定义聊天背景透明度">
+        </div>
       </section>
 
       <!-- 锁屏通知 -->
@@ -2225,6 +2249,7 @@
     </div>
     <input type="file" id="avatarInput" accept="image/*" class="hidden">
     <input type="file" id="humanAvatarInput" accept="image/*" class="hidden">
+    <input type="file" id="customWallInput" accept="image/*" class="hidden">
   </div>
 </div>
 
@@ -2523,6 +2548,8 @@ const clipInput = $("#clipInput");
 const localPreview = new Map();   // serverUrl -> blob: 本地预览，避免上传后重新下载闪烁
 const avatarInput = $("#avatarInput"), wallEl = $("#wall");
 const humanAvatarInput = $("#humanAvatarInput"), humanAvatarBtn = $("#humanAvatarBtn"), humanAvatarName = $("#humanAvatarName");
+const customWallInput = $("#customWallInput"), customWallUpload = $("#customWallUpload"), customWallReset = $("#customWallReset");
+const customWallOpacity = $("#customWallOpacity"), customWallOpacityLabel = $("#customWallOpacityLabel");
 const peerNameEl = $("#peerName"), profilePanel = $("#profilePanel");
 const profileClose = $("#profileClose"), moreBtn = $("#moreBtn");
 const profileAvatarBtn = $("#profileAvatarBtn"), profileNameEl = $("#profileName");
@@ -2548,6 +2575,8 @@ const THEMES = ["light","harbor"];
 const WALLS = { light: "chat-light.webp", harbor: "chat-harbor.webp" };
 const AVATAR_KEY = "companion_avatar";
 const HUMAN_AVATAR_KEY = "companion_human_avatar";
+const CUSTOM_WALL_KEY = "companion_custom_chat_wall";
+const CUSTOM_WALL_OPACITY_KEY = "companion_custom_chat_wall_opacity";
 const REMARK_KEY = "companion_profile_remark";
 const SESSION_PICK_KEY = "companion_api_session_pick";
 const LEGACY_SESSION_ID = "__legacy__";
@@ -2598,6 +2627,46 @@ function applyWall(url){
     }catch(e){}
   };
   img.src = url;
+}
+let customWallUrl = "";
+function customWallOpacityValue(){
+  const value = Number(customWallOpacity ? customWallOpacity.value : 100);
+  return Math.max(0, Math.min(100, Number.isFinite(value) ? Math.round(value) : 100));
+}
+function syncCustomWallUi(){
+  const active = !!customWallUrl;
+  const opacity = customWallOpacityValue();
+  if (customWallOpacityLabel) customWallOpacityLabel.textContent = `${opacity}%`;
+  if (customWallOpacity) customWallOpacity.disabled = !active;
+  if (customWallReset) customWallReset.disabled = !active;
+}
+function applyCustomWall(url, opacity = 100){
+  customWallUrl = String(url || "");
+  const safeOpacity = Math.max(0, Math.min(100, Number(opacity) || 0));
+  document.documentElement.style.setProperty("--custom-wall-image", customWallUrl ? `url("${customWallUrl}")` : "none");
+  document.documentElement.style.setProperty("--custom-wall-opacity", customWallUrl ? String(safeOpacity / 100) : "0");
+  if (customWallOpacity) customWallOpacity.value = String(safeOpacity);
+  syncCustomWallUi();
+}
+function wallpaperDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      try{
+        const maxSide = 2048;
+        const scale = Math.min(1, maxSide / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(objectUrl);
+        resolve(canvas.toDataURL("image/jpeg", .86));
+      }catch(error){ URL.revokeObjectURL(objectUrl); reject(error); }
+    };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("unsupported image")); };
+    image.src = objectUrl;
+  });
 }
 function applyAvatar(url){
   // 写 CSS 变量 → 顶栏头像、聊天每条消息旁的头像、空状态/登录 orb、profile 大头像一起换
@@ -2654,6 +2723,7 @@ function closeProfile(){
 try{ localStorage.removeItem("companion_bg"); }catch(e){}
 applyIdentity();
 applyWall(currentWall());
+applyCustomWall(localStorage.getItem(CUSTOM_WALL_KEY) || "", localStorage.getItem(CUSTOM_WALL_OPACITY_KEY) || 100);
 applyAvatar(localStorage.getItem(AVATAR_KEY) || CONFIG.AI_AVATAR);
 applyHumanAvatar(localStorage.getItem(HUMAN_AVATAR_KEY) || CONFIG.HUMAN_AVATAR);
 applyRemark(localStorage.getItem(REMARK_KEY));
@@ -2790,6 +2860,36 @@ syncThemeSeg();
 if (themeSeg) themeSeg.addEventListener("click", e => {
   const btn = e.target.closest("button[data-val]");
   if (btn) setTheme(btn.dataset.val);
+});
+if (customWallUpload) customWallUpload.addEventListener("click", () => customWallInput && customWallInput.click());
+if (customWallInput) customWallInput.addEventListener("change", async () => {
+  const file = customWallInput.files && customWallInput.files[0];
+  customWallInput.value = "";
+  if (!file) return;
+  try{
+    const dataUrl = await wallpaperDataUrl(file);
+    localStorage.setItem(CUSTOM_WALL_KEY, dataUrl);
+    localStorage.setItem(CUSTOM_WALL_OPACITY_KEY, "100");
+    applyCustomWall(dataUrl, 100);
+    showToast("聊天背景已更新");
+  }catch(error){
+    console.error("custom wallpaper failed", error);
+    showToast("图片无法保存，请换一张较小的图片");
+  }
+});
+if (customWallOpacity) customWallOpacity.addEventListener("input", () => {
+  const opacity = customWallOpacityValue();
+  document.documentElement.style.setProperty("--custom-wall-opacity", String(opacity / 100));
+  if (customWallOpacityLabel) customWallOpacityLabel.textContent = `${opacity}%`;
+  try{ localStorage.setItem(CUSTOM_WALL_OPACITY_KEY, String(opacity)); }catch(_){}
+});
+if (customWallReset) customWallReset.addEventListener("click", () => {
+  try{
+    localStorage.removeItem(CUSTOM_WALL_KEY);
+    localStorage.removeItem(CUSTOM_WALL_OPACITY_KEY);
+  }catch(_){}
+  applyCustomWall("", 100);
+  showToast("已恢复主题背景");
 });
 
 /* 本地预览便捷:仅 localhost 下,带 #preview-menu 直接亮出 hub 菜单(线上域名不生效,安全) */
