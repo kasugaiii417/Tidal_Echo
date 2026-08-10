@@ -6756,12 +6756,8 @@ async function executeFetchTool(toolUse, signal){
     if (name !== "fetch_json" && name !== "fetch_txt") throw new Error("Unsupported tool: " + name);
     const parsedUrl = new URL(url);
     if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") throw new Error("Only HTTP(S) URLs are supported");
-    const response = await fetch(FETCH_PROXY_URL, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "Accept":name === "fetch_json" ? "application/json" : "text/plain" },
-      body:JSON.stringify({ url:parsedUrl.toString(), type:name === "fetch_json" ? "json" : "txt" }),
-      signal
-    });
+    const proxyUrl = `${FETCH_PROXY_URL}/?url=${encodeURIComponent(parsedUrl.toString())}`;
+    const response = await fetch(proxyUrl, { signal });
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
     const value = name === "fetch_json" ? await response.json() : await response.text();
     const result = typeof value === "string" ? value : JSON.stringify(value, null, 2);
