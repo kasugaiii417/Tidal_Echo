@@ -6840,14 +6840,14 @@ async function executeFetchTool(toolUse, signal){
   const url = String(toolUse.input && toolUse.input.url || "");
   try{
     if (name !== "fetch_json" && name !== "fetch_txt") throw new Error("Unsupported tool: " + name);
-    const parsedUrl = new URL(url);
-    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") throw new Error("Only HTTP(S) URLs are supported");
-    const proxyUrl = `${FETCH_PROXY_URL}/?url=${encodeURIComponent(parsedUrl.toString())}`;
+    const targetUrl = url.trim().replace(/^["'`]+|["'`]+$/g, "").trim();
+    if (!/^https?:\/\//i.test(targetUrl)) throw new Error(`Invalid HTTP(S) URL: ${targetUrl || "(empty)"}`);
+    const proxyUrl = `${FETCH_PROXY_URL}/?url=${encodeURIComponent(targetUrl)}`;
     const response = await fetch(proxyUrl, { signal });
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
     const value = name === "fetch_json" ? await response.json() : await response.text();
     const result = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-    return { toolUse, url, result, error:false };
+    return { toolUse, url:targetUrl, result, error:false };
   }catch(error){
     if (signal && signal.aborted) throw error;
     return { toolUse, url, result:`Tool error: ${error.message || error}`, error:true };
