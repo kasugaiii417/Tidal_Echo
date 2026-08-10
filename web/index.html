@@ -525,6 +525,8 @@
 
   .bubble{
     max-width: 72%;
+    min-width:0;
+    box-sizing:border-box;
     padding: 8px 12px;
     border-radius: 16px;
     position: relative;
@@ -562,10 +564,10 @@
   .row.human.tail .bubble{ border-bottom-right-radius: 2px; }
 
   .bubble .txt{ white-space: normal; }
-  .bubble.has-att{ display:flex; flex-direction:column; gap:6px; }
+  .bubble.has-att{ display:flex; flex-direction:column; gap:6px; overflow:hidden; }
   .bubble.att-only{ background:transparent !important; padding:0 !important; box-shadow:none !important; }
-  .att-img-link{ display:block; line-height:0; border-radius:14px; overflow:hidden; width:min(64vw,260px); aspect-ratio:var(--att-ratio, 1.04); max-height:340px; background:rgba(125,128,135,.10); }
-  .att-img{ display:block; width:100%; height:100%; object-fit:cover; border-radius:14px; }
+  .att-img-link{ display:block; line-height:0; border-radius:14px; overflow:hidden; width:min(64vw,260px); max-width:100%; box-sizing:border-box; aspect-ratio:var(--att-ratio, 1.04); max-height:340px; background:rgba(125,128,135,.10); }
+  .att-img{ display:block; width:100%; max-width:100%; height:100%; object-fit:cover; border-radius:14px; box-sizing:border-box; }
   .att-file{ display:flex; align-items:center; gap:10px; padding:9px 11px; min-width:170px; max-width:250px; text-decoration:none; color:inherit; background:rgba(125,128,135,.12); border-radius:12px; }
   .att-file-ic{ flex:0 0 auto; width:36px; height:36px; display:grid; place-items:center; border-radius:9px; background:rgba(125,128,135,.20); }
   .att-file-ic svg{ width:20px; height:20px; opacity:.85; }
@@ -4102,6 +4104,23 @@ function parseAssistantVoiceSegments(text){
   }
   return segments;
 }
+function hideAssistantVoiceWhileStreaming(text){
+  const source = String(text || "");
+  let visible = "";
+  let insideVoice = false;
+  for (let index = 0; index < source.length; index++){
+    const isMarker = source[index] === "*"
+      && source[index - 1] !== "*"
+      && source[index + 1] !== "*"
+      && source[index - 1] !== "\\";
+    if (isMarker){
+      insideVoice = !insideVoice;
+      continue;
+    }
+    if (!insideVoice) visible += source[index];
+  }
+  return visible;
+}
 function voiceMessageHtml(text, segments){
   let html = "";
   let cursor = 0;
@@ -6709,7 +6728,7 @@ async function consumeAnthropicStream(response, aiId, signal){
   };
   const paintStream = () => {
     streamPaintTimer = null;
-    const visible = hideMemoryOperationsWhileStreaming(text);
+    const visible = hideAssistantVoiceWhileStreaming(hideMemoryOperationsWhileStreaming(text));
     const chunks = splitAssistantBubbleText(visible);
     reconcileStreamChunks(chunks, "streaming");
   };
