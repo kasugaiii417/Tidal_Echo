@@ -1441,18 +1441,18 @@
   }
   .conversation-page::before{ content:""; position:absolute; inset:0; background:var(--scrim); pointer-events:none; }
   .conversation-head{
-    position:relative; z-index:1; display:grid; grid-template-columns:44px 1fr auto auto;
+    position:relative; z-index:1; display:grid; grid-template-columns:44px 1fr auto auto auto;
     align-items:center; gap:8px;
     padding:calc(env(safe-area-inset-top) + 12px) var(--side-pad) 12px;
     border-bottom:1px solid var(--hairline);
     background:color-mix(in srgb, var(--bg) 72%, transparent);
     -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
   }
-  .conversation-back,.conversation-add,.conversation-import{
+  .conversation-back,.conversation-add,.conversation-import,.conversation-export{
     border:0; color:var(--text-soft); background:transparent; cursor:pointer;
     width:40px; height:40px; border-radius:50%; display:grid; place-items:center; font:inherit;
   }
-  .conversation-back svg,.conversation-add svg,.conversation-import svg{ width:22px; height:22px; }
+  .conversation-back svg,.conversation-add svg,.conversation-import svg,.conversation-export svg{ width:22px; height:22px; }
   .conversation-title{ margin:0; font-family:var(--font-en),var(--font-cn); font-size:clamp(22px,6vw,30px); font-weight:500; }
   .conversation-list{
     position:relative; z-index:1; flex:1 1 auto; overflow-y:auto;
@@ -1509,6 +1509,8 @@
   .import-picker-list::-webkit-scrollbar{ width:0; }
   .import-picker-row{ display:grid; grid-template-columns:24px minmax(0,1fr); gap:11px; align-items:start; padding:15px 2px; border-bottom:1px solid var(--hairline); cursor:pointer; }
   .import-picker-row input{ width:18px; height:18px; margin:2px 0 0; accent-color:var(--accent); }
+  button.import-picker-row{ width:100%; border:0; color:inherit; background:transparent; text-align:left; font:inherit; }
+  button.import-picker-row:active{ background:var(--row-press); }
   .import-picker-copy{ min-width:0; display:flex; flex-direction:column; gap:5px; }
   .import-picker-name{ color:var(--text); font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .import-picker-meta{ color:var(--text-faint); font-size:11px; }
@@ -2426,6 +2428,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
       <h2 class="conversation-title">Conversations</h2>
+      <button class="conversation-export" id="conversationExport" type="button" aria-label="导出聊天记录" title="导出 JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 20h14"/></svg>
+      </button>
       <button class="conversation-import" id="conversationImport" type="button" aria-label="导入聊天记录" title="导入 JSON">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
       </button>
@@ -2448,6 +2453,17 @@
         <label class="import-limit-control">Last <input class="import-limit-input" id="importMessageLimit" type="number" min="1" step="1" value="200" inputmode="numeric" aria-label="每个对话导入的最近消息数"> messages</label>
       </div>
       <div class="import-picker-list" id="importPickerList"></div>
+    </section>
+    <section class="import-picker" id="exportPicker" aria-label="选择要导出的对话">
+      <header class="import-picker-head">
+        <button class="import-picker-back" id="exportPickerBack" type="button" aria-label="取消导出">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <h2 class="import-picker-title">Export conversation</h2>
+        <span></span>
+      </header>
+      <div class="import-picker-summary">Choose one conversation. Each window is exported as a separate JSON file.</div>
+      <div class="import-picker-list" id="exportPickerList"></div>
     </section>
   </div>
 </div>
@@ -2689,9 +2705,10 @@ const terminalBtn = $("#terminalBtn"), terminalPanel = $("#terminalPanel"), term
 const brainSeg = $("#brainSeg"), brainHint = $("#brainHint");
 const conversationPanel = $("#conversationPanel"), conversationList = $("#conversationList");
 const conversationBack = $("#conversationBack"), conversationAdd = $("#conversationAdd");
-const conversationImport = $("#conversationImport"), conversationImportInput = $("#conversationImportInput");
+const conversationImport = $("#conversationImport"), conversationImportInput = $("#conversationImportInput"), conversationExport = $("#conversationExport");
 const importPicker = $("#importPicker"), importPickerBack = $("#importPickerBack"), importPickerConfirm = $("#importPickerConfirm");
 const importPickerSummary = $("#importPickerSummary"), importPickerList = $("#importPickerList"), importMessageLimit = $("#importMessageLimit");
+const exportPicker = $("#exportPicker"), exportPickerBack = $("#exportPickerBack"), exportPickerList = $("#exportPickerList");
 const memoryPanel = $("#memoryPanel"), memoryBack = $("#memoryBack"), memoryAdd = $("#memoryAdd"), memoryList = $("#memoryList");
 const systemPromptInput = $("#systemPromptInput"), systemPromptHint = $("#systemPromptHint");
 const memoryNewEditor = $("#memoryNewEditor"), memoryNewContent = $("#memoryNewContent");
@@ -2910,6 +2927,8 @@ function openConversationList(){
 }
 function closeConversationList(){
   if (!conversationPanel) return;
+  closeImportPicker();
+  closeExportPicker();
   conversationPanel.classList.remove("open");
   clearTimeout(conversationCloseTimer);
   conversationCloseTimer = setTimeout(() => conversationPanel.classList.add("hidden"), 400);
@@ -5943,6 +5962,67 @@ function commitSelectedImports(){
   renderConversationList();
   showToast(`Imported ${rows.length} conversation${rows.length === 1 ? "" : "s"}`);
 }
+function safeExportFileName(value){
+  const cleaned = String(value || "conversation").trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/\s+/g, " ").slice(0, 80);
+  return cleaned || "conversation";
+}
+function closeExportPicker(){
+  if (exportPicker) exportPicker.classList.remove("open");
+  if (exportPickerList) exportPickerList.innerHTML = "";
+}
+function openExportPicker(){
+  if (!exportPicker || !exportPickerList) return;
+  const rows = conversations.slice().sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+  exportPickerList.innerHTML = rows.map(conversation => {
+    const messages = readConversationLocal(conversation.id) || [];
+    return `<button class="import-picker-row" type="button" data-export-conversation="${escapeHtml(conversation.id)}">
+      <span aria-hidden="true">⇧</span>
+      <span class="import-picker-copy">
+        <span class="import-picker-name">${escapeHtml(conversation.title || "新对话")}</span>
+        <span class="import-picker-meta">${escapeHtml(new Date(conversation.updatedAt || Date.now()).toLocaleString())} · ${messages.length} messages</span>
+        <span class="import-picker-preview">${escapeHtml(conversation.preview || "还没有消息")}</span>
+      </span>
+    </button>`;
+  }).join("");
+  exportPicker.classList.add("open");
+}
+async function exportConversation(id){
+  const conversation = conversations.find(item => item.id === id);
+  if (!conversation) return;
+  if (id === activeConversationId){
+    if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
+    await writeMessageCache();
+  }
+  const storedMessages = readConversationLocal(id) || [];
+  const exportedMessages = storedMessages.map(message => ({
+    id:message.id,
+    role:message.from === "human" ? "user" : "assistant",
+    content:message.text || "",
+    timestamp:message.ts,
+    kind:message.kind,
+    meta:message.meta || {}
+  }));
+  const payload = {
+    format:"tidal-echo-conversation",
+    version:1,
+    exportedAt:new Date().toISOString(),
+    title:conversation.title || "新对话",
+    createdAt:new Date(conversation.createdAt || Date.now()).toISOString(),
+    updatedAt:new Date(conversation.updatedAt || Date.now()).toISOString(),
+    messages:exportedMessages
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:"application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const date = new Date(conversation.updatedAt || Date.now()).toLocaleDateString("en-CA");
+  link.href = url;
+  link.download = `${safeExportFileName(conversation.title)}-${date}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  showToast(`Exported ${exportedMessages.length} messages`);
+}
 if (conversationList) conversationList.addEventListener("click", e => {
   const deleteButton = e.target.closest("[data-delete-conversation]");
   if (deleteButton){
@@ -5961,6 +6041,12 @@ if (conversationList) conversationList.addEventListener("keydown", e => {
 });
 if (conversationAdd) conversationAdd.addEventListener("click", () => void createConversation());
 if (conversationImport) conversationImport.addEventListener("click", () => conversationImportInput && conversationImportInput.click());
+if (conversationExport) conversationExport.addEventListener("click", openExportPicker);
+if (exportPickerBack) exportPickerBack.addEventListener("click", closeExportPicker);
+if (exportPickerList) exportPickerList.addEventListener("click", e => {
+  const button = e.target.closest("[data-export-conversation]");
+  if (button) void exportConversation(button.dataset.exportConversation);
+});
 if (importPickerBack) importPickerBack.addEventListener("click", closeImportPicker);
 if (importPickerList) importPickerList.addEventListener("change", updateImportPickerSelection);
 if (importMessageLimit) importMessageLimit.addEventListener("input", updateImportLimitPreview);
