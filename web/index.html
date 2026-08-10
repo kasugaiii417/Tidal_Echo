@@ -2908,9 +2908,11 @@ let menuCloseTimer = null;
 let conversationCloseTimer = null;
 let memoryCloseTimer = null;
 let pageTransitionTimer = null;
+let menuInteractionReadyAt = 0;
 function openMenu(){
   if (!menuPanel) return;
   refreshDays();
+  menuInteractionReadyAt = Date.now() + 500;
   clearTimeout(menuCloseTimer);
   menuPanel.classList.remove("hidden");
   requestAnimationFrame(() => requestAnimationFrame(() => menuPanel.classList.add("open")));
@@ -2977,9 +2979,14 @@ if (menuPanel){
   menuPanel.addEventListener("click", (e) => {
     const item = e.target.closest(".menu-item");
     if (!item) return;
+    if (Date.now() < menuInteractionReadyAt){
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (item.dataset.menu === "chat") showConversationsFromMenu();
     else if (item.dataset.menu === "memory") showMemoryFromMenu();
-    else if (item.dataset.menu === "album") location.assign("album.html");  // album shell (wire your own backend)
+    else if (item.dataset.menu === "album") navigateToAlbum();  // album shell (wire your own backend)
     else showToast("即将开放");                           // placeholder items
   });
 }
@@ -3997,6 +4004,7 @@ const DOM_EDGE = 600;         // 视口逼近物化边缘到 600 行内 → idle
 const SCROLL_IDLE_MS = 140;   // 滚动停止判定:惯性结束后再做卸载/插入
 const CACHE_DB = "companion-message-cache";
 const CACHE_STORE = "messages";
+const CONVERSATION_CACHE_STORE = "conversations";
 const CONVERSATIONS_KEY = "companion_conversations_v1";
 const ACTIVE_CONVERSATION_KEY = "companion_active_conversation_v1";
 const CONVERSATION_MESSAGES_PREFIX = "companion_conversation_messages_v1:";
@@ -5608,10 +5616,11 @@ if (newMsgBtn) newMsgBtn.addEventListener("click", () => { hideNewMsgPill(); scr
 function openMessageDb(){
   return new Promise((resolve, reject) => {
     if (!window.indexedDB){ reject(new Error("indexedDB unavailable")); return; }
-    const req = indexedDB.open(CACHE_DB, 1);
+    const req = indexedDB.open(CACHE_DB, 2);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE, { keyPath:"id" });
+      if (!db.objectStoreNames.contains(CONVERSATION_CACHE_STORE)) db.createObjectStore(CONVERSATION_CACHE_STORE, { keyPath:"id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error || new Error("indexedDB open"));
@@ -5628,6 +5637,46 @@ function readConversationLocal(id = activeConversationId){
     return Array.isArray(rows) ? rows.sort((a, b) => msgNum(a.id) - msgNum(b.id)) : [];
   }catch(_){ return []; }
 }
+async function readConversationIndexed(id = activeConversationId){
+  try{
+    const db = await openMessageDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(CONVERSATION_CACHE_STORE, "readonly");
+      const req = tx.objectStore(CONVERSATION_CACHE_STORE).get(id);
+      req.onsuccess = () => resolve(req.result && Array.isArray(req.result.messages) ? req.result.messages.sort((a, b) => msgNum(a.id) - msgNum(b.id)) : null);
+      req.onerror = () => reject(req.error || new Error("conversation cache read"));
+      tx.oncomplete = () => db.close();
+    });
+  }catch(_){ return null; }
+}
+async function writeConversationIndexed(id, messages){
+  const db = await openMessageDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
+    tx.objectStore(CONVERSATION_CACHE_STORE).put({ id, messages, updatedAt:Date.now() });
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { const error = tx.error || new Error("conversation cache write"); db.close(); reject(error); };
+    tx.onabort = () => { const error = tx.error || new Error("conversation cache aborted"); db.close(); reject(error); };
+  });
+}
+let conversationWriteChain = Promise.resolve();
+function queueConversationIndexedWrite(id, messages){
+  conversationWriteChain = conversationWriteChain
+    .catch(() => {})
+    .then(() => writeConversationIndexed(id, messages));
+  return conversationWriteChain;
+}
+async function deleteConversationIndexed(id){
+  try{
+    const db = await openMessageDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
+      tx.objectStore(CONVERSATION_CACHE_STORE).delete(id);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { const error = tx.error; db.close(); reject(error); };
+    });
+  }catch(_){ }
+}
 async function readLegacyMessages(){
   try{
     const db = await openMessageDb();
@@ -5641,6 +5690,8 @@ async function readLegacyMessages(){
   }catch(_){ return []; }
 }
 async function readCachedMessages(){
+  const indexed = await readConversationIndexed();
+  if (indexed !== null) return indexed;
   const local = readConversationLocal();
   if (local !== null) return local;
   if (activeConversationId !== DEFAULT_CONVERSATION_ID) return [];
@@ -5655,15 +5706,29 @@ function cacheableMessages(){
     .filter((m) => msgNum(m.id) > 0 && m.status !== "failed" && m.status !== "streaming")
     .map((m) => ({ id: msgKey(m.id), ts:m.ts, from:m.from, kind:m.kind, text:m.text, meta:m.meta || {} }));
 }
-async function writeMessageCache(){
+function writeMessageCache(){
   const conversation = currentConversation();
   if (conversation && conversation.readOnly) return;
   const items = cacheableMessages();
+  const indexedSave = queueConversationIndexedWrite(activeConversationId, items).catch(e => console.error("indexed conversation save failed", e));
   try{
     localStorage.setItem(conversationMessagesKey(), JSON.stringify(items));
     updateConversationSummary(items);
   }catch(e){ console.error("conversation save failed", e); }
+  return indexedSave;
 }
+function flushMessageCacheNow(){
+  if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
+  writeMessageCache();
+}
+async function navigateToAlbum(){
+  await flushMessageCacheNow();
+  location.assign("album.html");
+}
+window.addEventListener("pagehide", flushMessageCacheNow);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushMessageCacheNow();
+});
 function scheduleCacheSave(){
   if (cacheTimer) clearTimeout(cacheTimer);
   cacheTimer = setTimeout(writeMessageCache, 400);
@@ -5754,6 +5819,7 @@ async function createConversation(){
   const row = { id:makeConversationId(), title:"新对话", createdAt:now, updatedAt:now, preview:"", readOnly:false };
   conversations.push(row);
   try{ localStorage.setItem(conversationMessagesKey(row.id), "[]"); }catch(_){}
+  void queueConversationIndexedWrite(row.id, []).catch(() => {});
   await enterConversation(row.id);
 }
 async function deleteConversation(id){
@@ -5763,12 +5829,14 @@ async function deleteConversation(id){
   const deletingActive = target.id === activeConversationId;
   if (deletingActive && cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
   try{ localStorage.removeItem(conversationMessagesKey(target.id)); }catch(_){}
+  void deleteConversationIndexed(target.id);
   conversations = conversations.filter(c => c.id !== target.id);
   if (!conversations.length){
     const now = Date.now();
     const replacement = { id:makeConversationId(), title:"新对话", createdAt:now, updatedAt:now, preview:"", readOnly:false };
     conversations.push(replacement);
     try{ localStorage.setItem(conversationMessagesKey(replacement.id), "[]"); }catch(_){}
+    void queueConversationIndexedWrite(replacement.id, []).catch(() => {});
   }
   if (deletingActive){
     const next = conversations.slice().sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0];
@@ -6013,7 +6081,7 @@ async function exportConversation(id){
     if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
     await writeMessageCache();
   }
-  const storedMessages = readConversationLocal(id) || [];
+  const storedMessages = await readConversationIndexed(id) || readConversationLocal(id) || [];
   const exportedMessages = storedMessages.map(message => ({
     id:message.id,
     role:message.from === "human" ? "user" : "assistant",
