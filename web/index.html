@@ -583,7 +583,7 @@
   }
   .bubble .txt strong{ font-weight: 700; }
   .voice-player{
-    display:inline-flex; align-items:center; gap:9px; min-width:190px; max-width:100%;
+    display:inline-flex; align-items:center; gap:8px; min-width:210px; max-width:100%;
     margin:5px 3px; padding:8px 10px; border-radius:13px;
     color:inherit; background:rgba(118,132,148,.13); vertical-align:middle;
   }
@@ -594,8 +594,19 @@
   .voice-play:disabled{ cursor:default; opacity:.55; }
   .voice-play::before{ content:""; width:0; height:0; margin-left:2px; border-top:5px solid transparent; border-bottom:5px solid transparent; border-left:8px solid currentColor; }
   .voice-player.playing .voice-play::before{ width:8px; height:10px; margin:0; border:0; background:linear-gradient(90deg,currentColor 0 3px,transparent 3px 5px,currentColor 5px 8px); }
-  .voice-progress{ position:relative; flex:1 1 auto; min-width:86px; height:4px; border-radius:999px; background:rgba(100,118,136,.22); overflow:hidden; cursor:pointer; }
-  .voice-progress-fill{ display:block; width:0; height:100%; border-radius:inherit; background:var(--accent); }
+  .voice-waveform{
+    flex:1 1 auto; min-width:138px; height:30px; display:flex; align-items:center; justify-content:center;
+    gap:1px; overflow:hidden; cursor:pointer; touch-action:manipulation;
+  }
+  .voice-wave-bar{
+    width:2px; min-width:2px; border-radius:999px;
+    background:rgba(107,126,145,.25); transition:background-color .12s ease, opacity .12s ease;
+  }
+  .voice-wave-bar.played{ background:var(--accent); }
+  .voice-player.loading .voice-wave-bar{ animation:voiceWaveLoading 1.25s ease-in-out infinite alternate; }
+  .voice-player.loading .voice-wave-bar:nth-child(3n){ animation-delay:.18s; }
+  .voice-player.loading .voice-wave-bar:nth-child(4n){ animation-delay:.34s; }
+  @keyframes voiceWaveLoading{ from{ opacity:.32; } to{ opacity:.72; } }
   .voice-duration{ flex:none; min-width:30px; color:var(--text-faint); font-family:var(--font-en),var(--font-cn); font-size:10.5px; text-align:right; }
   .voice-loading{ display:inline-flex; align-items:center; gap:3px; min-width:30px; justify-content:center; }
   .voice-loading i{ width:4px; height:4px; border-radius:50%; background:currentColor; opacity:.35; animation:voiceDot 1s ease-in-out infinite; }
@@ -3998,7 +4009,7 @@ function voiceMessageHtml(text, segments){
   segments.forEach((segment, index) => {
     html += renderText(String(text).slice(cursor, segment.start));
     if (index === 0){
-      html += `<span class="voice-player loading"><button class="voice-play" type="button" aria-label="播放语音" disabled></button><span class="voice-progress"><span class="voice-progress-fill"></span></span><span class="voice-duration"><span class="voice-loading" aria-label="语音加载中"><i></i><i></i><i></i></span></span></span>`;
+      html += `<span class="voice-player loading"><button class="voice-play" type="button" aria-label="播放语音" disabled></button><span class="voice-waveform" aria-label="语音播放进度"></span><span class="voice-duration"><span class="voice-loading" aria-label="语音加载中"><i></i><i></i><i></i></span></span></span>`;
     }
     cursor = segment.end;
   });
@@ -4009,6 +4020,28 @@ function formatAudioDuration(seconds){
   if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
   const whole = Math.floor(seconds);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+function buildVoiceWaveform(waveform, seedText){
+  if (!waveform || waveform.childElementCount) return;
+  let seed = 2166136261;
+  for (const char of String(seedText || "voice")) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+  let previous = 17;
+  for (let index = 0; index < 44; index++){
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const randomHeight = 8 + (seed % 21);
+    const height = Math.max(8, Math.min(28, Math.round(previous * .28 + randomHeight * .72)));
+    previous = height;
+    const bar = document.createElement("i");
+    bar.className = "voice-wave-bar";
+    bar.style.height = `${height}px`;
+    waveform.appendChild(bar);
+  }
+}
+function updateVoiceWaveform(waveform, ratio){
+  if (!waveform) return;
+  const bars = waveform.querySelectorAll(".voice-wave-bar");
+  const playedCount = Math.round(Math.max(0, Math.min(1, ratio || 0)) * bars.length);
+  bars.forEach((bar, index) => bar.classList.toggle("played", index < playedCount));
 }
 function cachedMessageTts(cacheKey, voiceText){
   const existing = ttsAudioCache.get(cacheKey);
@@ -4029,11 +4062,12 @@ function cachedMessageTts(cacheKey, voiceText){
 function setupVoicePlayer(player, message, voiceText){
   if (!player || !voiceText) return;
   const cacheKey = `${activeConversationId}:${message._key}`;
+  const waveform = player.querySelector(".voice-waveform");
+  buildVoiceWaveform(waveform, cacheKey);
   cachedMessageTts(cacheKey, voiceText).then(entry => {
     if (!player.isConnected) return;
     const button = player.querySelector(".voice-play");
-    const track = player.querySelector(".voice-progress");
-    const fill = player.querySelector(".voice-progress-fill");
+    const track = player.querySelector(".voice-waveform");
     const duration = player.querySelector(".voice-duration");
     const audio = new Audio(entry.url);
     player.classList.remove("loading");
@@ -4042,15 +4076,16 @@ function setupVoicePlayer(player, message, voiceText){
     audio.addEventListener("loadedmetadata", () => { duration.textContent = formatAudioDuration(audio.duration); });
     audio.addEventListener("timeupdate", () => {
       const ratio = audio.duration ? Math.min(1, audio.currentTime / audio.duration) : 0;
-      fill.style.width = `${ratio * 100}%`;
+      updateVoiceWaveform(track, ratio);
       duration.textContent = formatAudioDuration(audio.duration - audio.currentTime);
     });
     audio.addEventListener("ended", () => {
       player.classList.remove("playing");
-      fill.style.width = "0";
+      updateVoiceWaveform(track, 0);
       duration.textContent = formatAudioDuration(audio.duration);
       if (activeTtsAudio === audio) activeTtsAudio = null;
     });
+    audio.addEventListener("pause", () => player.classList.remove("playing"));
     button.addEventListener("click", () => {
       if (audio.paused){
         if (activeTtsAudio && activeTtsAudio !== audio) activeTtsAudio.pause();
