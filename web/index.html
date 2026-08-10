@@ -4005,6 +4005,7 @@ const SCROLL_IDLE_MS = 140;   // 滚动停止判定:惯性结束后再做卸载/
 const CACHE_DB = "companion-message-cache";
 const CACHE_STORE = "messages";
 const CONVERSATION_CACHE_STORE = "conversations";
+const TTS_AUDIO_STORE = "tts_audio";
 const CONVERSATIONS_KEY = "companion_conversations_v1";
 const ACTIVE_CONVERSATION_KEY = "companion_active_conversation_v1";
 const CONVERSATION_MESSAGES_PREFIX = "companion_conversation_messages_v1:";
@@ -4174,7 +4175,14 @@ function cachedMessageTts(cacheKey, voiceText){
   if (existing && existing.text === voiceText) return existing.promise;
   if (existing && existing.url) URL.revokeObjectURL(existing.url);
   const entry = { text:voiceText, url:"", status:"loading", promise:null };
-  entry.promise = apiTts(voiceText).then(blob => {
+  entry.promise = readTtsAudio(cacheKey).then(async persisted => {
+    const blob = persisted && persisted.text === voiceText && persisted.blob instanceof Blob
+      ? persisted.blob
+      : await apiTts(voiceText);
+    if (!persisted || persisted.text !== voiceText){
+      try{ await writeTtsAudio(cacheKey, voiceText, blob); }
+      catch(error){ console.warn("Persistent TTS cache write failed", error); }
+    }
     entry.url = URL.createObjectURL(blob);
     entry.status = "ready";
     return entry;
@@ -4500,7 +4508,7 @@ function setMessage(raw, { render = true, cache = true } = {}){
   const idNum = msgNum(raw.id);
   if (idNum > lastId) lastId = idNum;
   if (render) scheduleRender({ stickToBottom: nearBottom() });
-  if (cache) scheduleCacheSave();
+  if (cache) scheduleCacheSave({ allowShrink:raw.status === "failed" });
   scheduleTerminalRender();
   return messageByKey.get(key);
 }
@@ -4510,11 +4518,18 @@ function removeMessage(key, { render = true, cache = true } = {}){
   if (!m) return null;
   messageByKey.delete(k);
   chatMessages = chatMessages.filter((x) => x !== m);
+  if (m.from === "ai" && parseAssistantVoiceSegments(m.text).length){
+    const audioKey = `${activeConversationId}:${k}`;
+    const entry = ttsAudioCache.get(audioKey);
+    if (entry && entry.url) try{ URL.revokeObjectURL(entry.url); }catch(_){}
+    ttsAudioCache.delete(audioKey);
+    void deleteTtsAudio(audioKey);
+  }
   seen.delete(k);
   invalidateRows();
   if (render) scheduleRender({ preserveAnchor: true });
   scheduleTerminalRender();
-  if (cache) scheduleCacheSave();
+  if (cache) scheduleCacheSave({ allowShrink:true });
   return m;
 }
 function confirmOptimistic(tempKey, serverId, serverMessage){
@@ -5616,15 +5631,68 @@ if (newMsgBtn) newMsgBtn.addEventListener("click", () => { hideNewMsgPill(); scr
 function openMessageDb(){
   return new Promise((resolve, reject) => {
     if (!window.indexedDB){ reject(new Error("indexedDB unavailable")); return; }
-    const req = indexedDB.open(CACHE_DB, 2);
+    const req = indexedDB.open(CACHE_DB, 3);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE, { keyPath:"id" });
       if (!db.objectStoreNames.contains(CONVERSATION_CACHE_STORE)) db.createObjectStore(CONVERSATION_CACHE_STORE, { keyPath:"id" });
+      if (!db.objectStoreNames.contains(TTS_AUDIO_STORE)) db.createObjectStore(TTS_AUDIO_STORE, { keyPath:"id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error || new Error("indexedDB open"));
   });
+}
+async function readTtsAudio(id){
+  try{
+    const db = await openMessageDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(TTS_AUDIO_STORE, "readonly");
+      const req = tx.objectStore(TTS_AUDIO_STORE).get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error || new Error("TTS cache read"));
+      tx.oncomplete = () => db.close();
+    });
+  }catch(_){ return null; }
+}
+async function writeTtsAudio(id, text, blob){
+  const db = await openMessageDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TTS_AUDIO_STORE, "readwrite");
+    tx.objectStore(TTS_AUDIO_STORE).put({ id, text, blob, updatedAt:Date.now() });
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { const error = tx.error || new Error("TTS cache write"); db.close(); reject(error); };
+  });
+}
+async function deleteTtsAudio(id){
+  try{
+    const db = await openMessageDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(TTS_AUDIO_STORE, "readwrite");
+      tx.objectStore(TTS_AUDIO_STORE).delete(id);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { const error = tx.error; db.close(); reject(error); };
+    });
+  }catch(_){ }
+}
+async function deleteConversationTtsAudio(conversationId){
+  const prefix = `${conversationId}:`;
+  for (const [key, entry] of ttsAudioCache){
+    if (!key.startsWith(prefix)) continue;
+    if (entry.url) try{ URL.revokeObjectURL(entry.url); }catch(_){}
+    ttsAudioCache.delete(key);
+  }
+  try{
+    const db = await openMessageDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(TTS_AUDIO_STORE, "readwrite");
+      const store = tx.objectStore(TTS_AUDIO_STORE);
+      const range = IDBKeyRange.bound(prefix, `${prefix}\uffff`);
+      const req = store.openCursor(range);
+      req.onsuccess = () => { const cursor = req.result; if (cursor){ cursor.delete(); cursor.continue(); } };
+      req.onerror = () => reject(req.error || new Error("TTS cache cleanup"));
+      tx.oncomplete = () => { db.close(); resolve(); };
+    });
+  }catch(_){ }
 }
 function conversationMessagesKey(id = activeConversationId){
   return CONVERSATION_MESSAGES_PREFIX + id;
@@ -5642,28 +5710,53 @@ async function readConversationIndexed(id = activeConversationId){
     const db = await openMessageDb();
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(CONVERSATION_CACHE_STORE, "readonly");
-      const req = tx.objectStore(CONVERSATION_CACHE_STORE).get(id);
-      req.onsuccess = () => resolve(req.result && Array.isArray(req.result.messages) ? req.result.messages.sort((a, b) => msgNum(a.id) - msgNum(b.id)) : null);
-      req.onerror = () => reject(req.error || new Error("conversation cache read"));
-      tx.oncomplete = () => db.close();
+      const store = tx.objectStore(CONVERSATION_CACHE_STORE);
+      const primaryReq = store.get(id);
+      const backupReq = store.get(`${id}:messages_backup`);
+      tx.oncomplete = () => {
+        const primary = primaryReq.result && Array.isArray(primaryReq.result.messages) ? primaryReq.result.messages : null;
+        const backup = backupReq.result && Array.isArray(backupReq.result.messages) ? backupReq.result.messages : null;
+        const recovered = primary && primary.length ? primary : (backup && backup.length ? backup : primary);
+        if ((!primary || !primary.length) && backup && backup.length) console.warn("Recovered conversation from IndexedDB backup", id, backup.length);
+        db.close();
+        resolve(recovered === null ? null : recovered.sort((a, b) => msgNum(a.id) - msgNum(b.id)));
+      };
+      primaryReq.onerror = () => reject(primaryReq.error || new Error("conversation cache read"));
+      backupReq.onerror = () => reject(backupReq.error || new Error("conversation backup read"));
     });
   }catch(_){ return null; }
 }
-async function writeConversationIndexed(id, messages){
+async function writeConversationIndexed(id, messages, { allowShrink = false } = {}){
   const db = await openMessageDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
-    tx.objectStore(CONVERSATION_CACHE_STORE).put({ id, messages, updatedAt:Date.now() });
-    tx.oncomplete = () => { db.close(); resolve(); };
+    const store = tx.objectStore(CONVERSATION_CACHE_STORE);
+    const currentReq = store.get(id);
+    let skipped = false;
+    currentReq.onsuccess = () => {
+      const current = currentReq.result && Array.isArray(currentReq.result.messages) ? currentReq.result.messages : null;
+      if (!allowShrink && current && messages.length < current.length){
+        skipped = true;
+        console.warn("Refusing to overwrite IndexedDB conversation with a shorter snapshot", { id, stored:current.length, incoming:messages.length });
+        return;
+      }
+      if (current){
+        const backupMessages = allowShrink && messages.length === 0 ? [] : current;
+        store.put({ id:`${id}:messages_backup`, messages:backupMessages, updatedAt:currentReq.result.updatedAt || Date.now() });
+      }
+      store.put({ id, messages, updatedAt:Date.now() });
+    };
+    currentReq.onerror = () => { try{ tx.abort(); }catch(_){} };
+    tx.oncomplete = () => { db.close(); resolve({ saved:!skipped, skipped }); };
     tx.onerror = () => { const error = tx.error || new Error("conversation cache write"); db.close(); reject(error); };
     tx.onabort = () => { const error = tx.error || new Error("conversation cache aborted"); db.close(); reject(error); };
   });
 }
 let conversationWriteChain = Promise.resolve();
-function queueConversationIndexedWrite(id, messages){
+function queueConversationIndexedWrite(id, messages, options = {}){
   conversationWriteChain = conversationWriteChain
     .catch(() => {})
-    .then(() => writeConversationIndexed(id, messages));
+    .then(() => writeConversationIndexed(id, messages, options));
   return conversationWriteChain;
 }
 async function deleteConversationIndexed(id){
@@ -5671,7 +5764,9 @@ async function deleteConversationIndexed(id){
     const db = await openMessageDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
-      tx.objectStore(CONVERSATION_CACHE_STORE).delete(id);
+      const store = tx.objectStore(CONVERSATION_CACHE_STORE);
+      store.delete(id);
+      store.delete(`${id}:messages_backup`);
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => { const error = tx.error; db.close(); reject(error); };
     });
@@ -5691,13 +5786,28 @@ async function readLegacyMessages(){
 }
 async function readCachedMessages(){
   const indexed = await readConversationIndexed();
-  if (indexed !== null) return indexed;
   const local = readConversationLocal();
-  if (local !== null) return local;
+  if (indexed !== null){
+    if (local !== null && local.length > indexed.length){
+      await queueConversationIndexedWrite(activeConversationId, local, { allowShrink:true });
+      console.warn("Recovered a longer pre-migration localStorage snapshot", { indexed:indexed.length, local:local.length });
+      try{ localStorage.removeItem(conversationMessagesKey()); }catch(_){}
+      return local;
+    }
+    try{ localStorage.removeItem(conversationMessagesKey()); }catch(_){}
+    return indexed;
+  }
+  if (local !== null){
+    const id = activeConversationId;
+    await queueConversationIndexedWrite(id, local, { allowShrink:true });
+    try{ localStorage.removeItem(conversationMessagesKey(id)); }catch(_){}
+    console.info("Migrated conversation messages from localStorage to IndexedDB", id, local.length);
+    return local;
+  }
   if (activeConversationId !== DEFAULT_CONVERSATION_ID) return [];
   const legacy = await readLegacyMessages();
   if (legacy.length){
-    try{ localStorage.setItem(conversationMessagesKey(), JSON.stringify(legacy)); }catch(_){}
+    await queueConversationIndexedWrite(activeConversationId, legacy, { allowShrink:true });
   }
   return legacy;
 }
@@ -5706,20 +5816,17 @@ function cacheableMessages(){
     .filter((m) => msgNum(m.id) > 0 && m.status !== "failed" && m.status !== "streaming")
     .map((m) => ({ id: msgKey(m.id), ts:m.ts, from:m.from, kind:m.kind, text:m.text, meta:m.meta || {} }));
 }
-function writeMessageCache(){
+function writeMessageCache({ allowShrink = false } = {}){
   const conversation = currentConversation();
   if (conversation && conversation.readOnly) return;
   const items = cacheableMessages();
-  const indexedSave = queueConversationIndexedWrite(activeConversationId, items).catch(e => console.error("indexed conversation save failed", e));
-  try{
-    localStorage.setItem(conversationMessagesKey(), JSON.stringify(items));
-    updateConversationSummary(items);
-  }catch(e){ console.error("conversation save failed", e); }
+  const indexedSave = queueConversationIndexedWrite(activeConversationId, items, { allowShrink }).catch(e => console.error("indexed conversation save failed", e));
+  updateConversationSummary(items);
   return indexedSave;
 }
 function flushMessageCacheNow(){
   if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
-  writeMessageCache();
+  return writeMessageCache();
 }
 async function navigateToAlbum(){
   await flushMessageCacheNow();
@@ -5729,9 +5836,9 @@ window.addEventListener("pagehide", flushMessageCacheNow);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushMessageCacheNow();
 });
-function scheduleCacheSave(){
-  if (cacheTimer) clearTimeout(cacheTimer);
-  cacheTimer = setTimeout(writeMessageCache, 400);
+function scheduleCacheSave(options = {}){
+  if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
+  return writeMessageCache(options);
 }
 
 function currentConversation(){
@@ -5818,8 +5925,7 @@ async function createConversation(){
   const now = Date.now();
   const row = { id:makeConversationId(), title:"新对话", createdAt:now, updatedAt:now, preview:"", readOnly:false };
   conversations.push(row);
-  try{ localStorage.setItem(conversationMessagesKey(row.id), "[]"); }catch(_){}
-  void queueConversationIndexedWrite(row.id, []).catch(() => {});
+  await queueConversationIndexedWrite(row.id, [], { allowShrink:true }).catch(() => {});
   await enterConversation(row.id);
 }
 async function deleteConversation(id){
@@ -5830,13 +5936,13 @@ async function deleteConversation(id){
   if (deletingActive && cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
   try{ localStorage.removeItem(conversationMessagesKey(target.id)); }catch(_){}
   void deleteConversationIndexed(target.id);
+  void deleteConversationTtsAudio(target.id);
   conversations = conversations.filter(c => c.id !== target.id);
   if (!conversations.length){
     const now = Date.now();
     const replacement = { id:makeConversationId(), title:"新对话", createdAt:now, updatedAt:now, preview:"", readOnly:false };
     conversations.push(replacement);
-    try{ localStorage.setItem(conversationMessagesKey(replacement.id), "[]"); }catch(_){}
-    void queueConversationIndexedWrite(replacement.id, []).catch(() => {});
+    await queueConversationIndexedWrite(replacement.id, [], { allowShrink:true }).catch(() => {});
   }
   if (deletingActive){
     const next = conversations.slice().sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0];
@@ -6027,23 +6133,24 @@ async function importConversationFile(file){
   }
   openImportPicker(items);
 }
-function commitSelectedImports(){
+async function commitSelectedImports(){
   const selected = selectedImportIndexes().map(index => pendingImportConversations[index]).filter(Boolean);
   if (!selected.length) return;
   const limit = selectedImportMessageLimit();
-  const rows = selected.map(item => {
+  const rows = [];
+  for (const item of selected){
     const messages = item.messages.slice(-limit);
     const id = makeConversationId();
-    localStorage.setItem(conversationMessagesKey(id), JSON.stringify(messages));
+    await queueConversationIndexedWrite(id, messages, { allowShrink:true });
     const firstTimestamp = Date.parse(messages[0]?.ts);
     const lastTimestamp = Date.parse(messages[messages.length - 1]?.ts);
-    return {
+    rows.push({
       id, title:item.title,
       createdAt:Number.isFinite(firstTimestamp) ? firstTimestamp : item.createdAt,
       updatedAt:Number.isFinite(lastTimestamp) ? lastTimestamp : item.updatedAt,
       preview:messagePreview(messages[messages.length - 1]), readOnly:false, imported:true
-    };
-  });
+    });
+  }
   conversations.push(...rows);
   saveConversationIndex();
   closeImportPicker();
@@ -6058,11 +6165,12 @@ function closeExportPicker(){
   if (exportPicker) exportPicker.classList.remove("open");
   if (exportPickerList) exportPickerList.innerHTML = "";
 }
-function openExportPicker(){
+async function openExportPicker(){
   if (!exportPicker || !exportPickerList) return;
   const rows = conversations.slice().sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-  exportPickerList.innerHTML = rows.map(conversation => {
-    const messages = readConversationLocal(conversation.id) || [];
+  const snapshots = await Promise.all(rows.map(conversation => readConversationIndexed(conversation.id)));
+  exportPickerList.innerHTML = rows.map((conversation, index) => {
+    const messages = snapshots[index] || readConversationLocal(conversation.id) || [];
     return `<button class="import-picker-row" type="button" data-export-conversation="${escapeHtml(conversation.id)}">
       <span aria-hidden="true">⇧</span>
       <span class="import-picker-copy">
@@ -6129,7 +6237,7 @@ if (conversationList) conversationList.addEventListener("keydown", e => {
 });
 if (conversationAdd) conversationAdd.addEventListener("click", () => void createConversation());
 if (conversationImport) conversationImport.addEventListener("click", () => conversationImportInput && conversationImportInput.click());
-if (conversationExport) conversationExport.addEventListener("click", openExportPicker);
+if (conversationExport) conversationExport.addEventListener("click", () => void openExportPicker());
 if (exportPickerBack) exportPickerBack.addEventListener("click", closeExportPicker);
 if (exportPickerList) exportPickerList.addEventListener("click", e => {
   const button = e.target.closest("[data-export-conversation]");
@@ -6142,7 +6250,7 @@ if (importMessageLimit) importMessageLimit.addEventListener("change", () => {
   importMessageLimit.value = String(selectedImportMessageLimit());
   updateImportLimitPreview();
 });
-if (importPickerConfirm) importPickerConfirm.addEventListener("click", commitSelectedImports);
+if (importPickerConfirm) importPickerConfirm.addEventListener("click", () => void commitSelectedImports());
 if (conversationImportInput) conversationImportInput.addEventListener("change", async () => {
   const file = conversationImportInput.files && conversationImportInput.files[0];
   conversationImportInput.value = "";
@@ -7053,6 +7161,7 @@ function startRealtime(){ connected = true; setConn("online"); }
 
 async function init(){
   if (!secret){ showLogin(); return; }
+  try{ if (navigator.storage && navigator.storage.persist) void navigator.storage.persist().catch(() => {}); }catch(_){}
   await loadSessions();
   loadBrain();
   let showedCache = false;
