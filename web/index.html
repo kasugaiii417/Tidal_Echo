@@ -3207,13 +3207,14 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let secs = 0, tickId = null, hideId = null, rafId = null;
   let waveBuilt = false;
   let bars = [];
-  let recognition = null, recognitionWanted = false, recognitionRestart = null;
+  let recognition = null, recognitionWanted = false, recognitionFinal = "";
   let mediaStream = null, mediaRecorder = null;
   let audioCtx = null, analyser = null, freqData = null;
   let speakingUtterance = null;
   let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null;
   let speakSeq = 0;
   let callId = "";
+  let callTurnBusy = false, callTurnController = null, ttsSource = null;
   let incomingOpen = false;
   let pendingIncomingText = "";
 
@@ -3417,7 +3418,6 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
 
   function stopRecognition(){
     recognitionWanted = false;
-    if (recognitionRestart){ clearTimeout(recognitionRestart); recognitionRestart = null; }
     if (recognition){
       try{ recognition.onend = null; recognition.abort(); }catch(e){}
       recognition = null;
@@ -3437,6 +3437,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       ttsUrl = "";
     }
     try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
+    if (ttsSource){ try{ ttsSource.stop(); }catch(e){} ttsSource = null; }
     speakingUtterance = null;
   }
 
@@ -3449,22 +3450,82 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     }, delay);
   }
 
-  function sendVoiceText(text, source){
+  async function sendVoiceText(text, source){
     const clean = String(text || "").trim();
-    if (!clean) return;
+    if (!clean || !open || callTurnBusy) return;
+    callTurnBusy = true;
+    recognitionWanted = false;
     const sense = privateMode ? flushAudioSense() : "";
-    apiVoiceText(clean + sense, { source: source || "browser_speech", call_id: callId })
-      .catch(() => {
-        setTranscript("没送出去,等下网络好了再说一次。", false);
-      });
+    const optimisticTs = Date.now();
+    const tempKey = msgKey(localMessageId());
+    const currentSid = effectiveApiSession();
+    const optimistic = {
+      id:tempKey,
+      ts:new Date(optimisticTs).toISOString(),
+      from:"human",
+      kind:"user",
+      text:clean,
+      meta:{ ...(currentSid ? { api_session:currentSid } : {}), voice:true, call_id:callId },
+      status:"sending"
+    };
+    seen.add(tempKey);
+    setMessage(optimistic, { render:false, cache:true });
+    freshKeys.add(tempKey);
+    rememberPendingOutgoing(tempKey, clean, optimisticTs);
+    scheduleRender({ stickToBottom:true });
+    setCaption("thinking");
+    setTranscript("你: " + clean, false);
+    setQuote(HINT_THINKING, { hint:true, dots:true });
+    callTurnController = new AbortController();
+    try{
+      const result = await apiVoiceText(clean + sense, {
+        source:source || "browser_speech",
+        call_id:callId,
+        controller:callTurnController,
+        onText(fullText){
+          if (!open) return;
+          setCaption("speaking");
+          setTranscript(AI_NAME + ": " + fullText, true);
+          setQuote(fullText);
+        }
+      }, Number(tempKey));
+      if (result && result.aborted){
+        confirmOptimistic(tempKey, msgKey(result.id));
+        dropPendingOutgoing(tempKey);
+        return;
+      }
+      if (!open) return;
+      confirmOptimistic(tempKey, msgKey(result.id));
+      dropPendingOutgoing(tempKey);
+      const fullText = String(result.text || "").trim();
+      if (fullText){
+        setTranscript(AI_NAME + ": " + fullText, false);
+        setQuote(fullText);
+        await speakOne(fullText);
+      }
+    }catch(error){
+      dropPendingOutgoing(tempKey);
+      if (!open || (callTurnController && callTurnController.signal.aborted)) return;
+      setMessage({ ...optimistic, status:"failed" });
+      setTranscript("没送出去,等下网络好了再说一次。", false);
+    }finally{
+      callTurnController = null;
+      callTurnBusy = false;
+      if (open && !muted){
+        setCaption("listening");
+        setQuote(HINT_LISTENING, { hint:true });
+        startRecognition();
+      }
+    }
   }
 
   function startRecognition(){
     if (!SpeechRecognition) return false;
     stopRecognition();
     recognitionWanted = true;
+    recognitionFinal = "";
     recognition = new SpeechRecognition();
-    recognition.lang = "zh-CN";
+    recognition.lang = "en-US";
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
@@ -3478,10 +3539,11 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       for (let i = event.resultIndex; i < event.results.length; i++){
         const piece = (event.results[i][0] && event.results[i][0].transcript || "").trim();
         if (!piece) continue;
-        if (event.results[i].isFinal) sendVoiceText(piece, "browser_speech");
+        if (event.results[i].isFinal) recognitionFinal += (recognitionFinal ? " " : "") + piece;
         else interim += piece;
       }
-      if (interim){ setTranscript("你: " + interim, true); pulseVu(0.5 + Math.random() * 0.45); }
+      const heard = [recognitionFinal, interim].filter(Boolean).join(" ");
+      if (heard){ setTranscript("你: " + heard, true); pulseVu(0.5 + Math.random() * 0.45); }
     };
     recognition.onerror = (event) => {
       if (!open) return;
@@ -3490,10 +3552,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       setTranscript(denied ? "麦克风权限没有打开。" : "语音识别暂时断开,正在重连。", false);
     };
     recognition.onend = () => {
-      if (!open || !recognitionWanted) return;
-      recognitionRestart = setTimeout(() => {
-        try{ recognition && recognition.start(); }catch(e){}
-      }, 450);
+      recognition = null;
+      if (!open || !recognitionWanted || muted || callTurnBusy) return;
+      recognitionWanted = false;
+      const finalText = recognitionFinal.trim();
+      recognitionFinal = "";
+      if (finalText) void sendVoiceText(finalText, "browser_speech");
+      else startRecognition();
     };
     try{
       recognition.start();
@@ -3546,13 +3611,21 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   async function startVoiceInput(){
     setCaption("listening");
     setTranscript("正在连接麦克风…", true);
+    if (!SpeechRecognition){
+      setCaption("unavailable");
+      setTranscript("This browser does not support speech recognition.", false);
+      return;
+    }
     if (!mediaStream) {
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
         await startWaveMeter(mediaStream);
       } catch(e) {}
     }
-    if (!startRecognition()) await startRecorderFallback();
+    if (!startRecognition()){
+      setCaption("unavailable");
+      setTranscript("Speech recognition could not be started.", false);
+    }
   }
 
   let ttsCtx = null;
@@ -3606,6 +3679,9 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     overlay.classList.remove("minimized");
     if (callMuteBtn) callMuteBtn.classList.remove("active");
     if (callPrivateBtn) callPrivateBtn.classList.remove("active");
+    inputEl.disabled = true;
+    sendBtn.disabled = true;
+    if (clipBtn) clipBtn.disabled = true;
     setQuote(HINT_LISTENING, { hint: true });
     if (miniTimer) miniTimer.textContent = fmt(secs);
     clearInterval(tickId);
@@ -3630,12 +3706,16 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (vuDecay){ clearTimeout(vuDecay); vuDecay = null; }
     setWaveLevel(0);
     speakSeq++;
+    if (callTurnController && !callTurnController.signal.aborted) callTurnController.abort();
+    callTurnController = null;
+    callTurnBusy = false;
     stopRecognition();
     stopRecorder();
     clearSpeechPlayback();
     speakQueue.length = 0;
     speakBusy = false;
     if (ttsCtx){ try{ ttsCtx.close(); }catch(e){} ttsCtx = null; }
+    applyConversationMode();
     apiCallEvent("end", { call_id: closingCallId }).catch(() => {});
     clearTimeout(hideId);
     hideId = setTimeout(() => overlay.classList.add("hidden"), 380);
@@ -3685,6 +3765,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
           if (!open) return;
           await new Promise((resolve) => {
             const source = ctx.createBufferSource();
+            ttsSource = source;
             source.buffer = audioBuf;
             source.connect(ctx.destination);
             source.start(0);
@@ -3713,7 +3794,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
             const vuTick = setInterval(() => setWaveLevel(0.45 + Math.random() * 0.5), 140);
             const stopVu = () => { clearInterval(vuTick); setWaveLevel(0); if (lyricId) clearTimeout(lyricId); };
             const safety = setTimeout(() => { stopVu(); resolve(); }, (audioBuf.duration * 1000) + 3000);
-            source.onended = () => { clearTimeout(safety); stopVu(); resolve(); };
+            source.onended = () => { clearTimeout(safety); stopVu(); if (ttsSource === source) ttsSource = null; resolve(); };
             console.log("[speak] WebAudio playing, duration:", audioBuf.duration.toFixed(1) + "s");
           });
           return;
@@ -3737,6 +3818,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     muted = !muted;
     if (mediaStream) mediaStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
     callMuteBtn.classList.toggle("active", muted);
+    if (muted) stopRecognition();
+    else if (open && !callTurnBusy && !speakBusy) startRecognition();
   });
   if (callPrivateBtn) callPrivateBtn.addEventListener("click", () => {
     privateMode = !privateMode;
@@ -5730,7 +5813,15 @@ function applyReaction(ev){
   scrollEl.addEventListener("touchstart", (e) => {
     if (isOpen() || e.touches.length !== 1) return;          // 多指(缩放)不触发
     const bubble = e.target.closest(".bubble, .tool-card");
-    if (!bubble || !scrollEl.contains(bubble) || e.target.closest("a")) return;
+    if (!bubble || !scrollEl.contains(bubble)) return;
+    const link = e.target.closest("a");
+    const imageLink = e.target.closest(".att-img-link");
+    // 普通链接仍交给浏览器；只有用户发送的图片链接允许进入消息长按删除流程。
+    if (link && !imageLink) return;
+    if (imageLink){
+      const row = bubble.closest("[data-message-key]");
+      if (!row || !row.classList.contains("human")) return;
+    }
     pressBubble = bubble;
     const t = e.touches[0]; startX = t.clientX; startY = t.clientY;
     clearTimeout(pressTimer);
@@ -7057,7 +7148,7 @@ function localMessageId(){
   localMessageId.n = Math.max((localMessageId.n || 0) + 1, Date.now() * 1000);
   return localMessageId.n;
 }
-async function consumeAnthropicStream(response, aiId, signal){
+async function consumeAnthropicStream(response, aiId, signal, options = {}){
   if (!response.body) throw new Error("Gateway response has no stream body");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -7134,6 +7225,7 @@ async function consumeAnthropicStream(response, aiId, signal){
       if ((eventName === "content_block_delta" || ev.type === "content_block_delta") && ev.delta && ev.delta.type === "text_delta"){
         const deltaText = ev.delta.text || "";
         text += deltaText;
+        if (options.onText) options.onText(text, deltaText);
         const block = blocksByIndex.get(Number(ev.index));
         if (block && block.type === "text") block.text += deltaText;
         scheduleStreamPaint();
@@ -7202,7 +7294,7 @@ async function consumeAnthropicStream(response, aiId, signal){
   if (!interrupted) playReceiveSound();
   return { text, contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted };
 }
-async function requestGateway(messages, systemContent, signal){
+async function requestGateway(messages, systemContent, signal, options = {}){
   let response;
   try{
     response = await fetch(GATEWAY_URL, {
@@ -7213,6 +7305,7 @@ async function requestGateway(messages, systemContent, signal){
         messages,
         model:CONFIG.MODEL,
         stream:true,
+        ...(options.voice ? { voice:true } : {}),
         ...(fetchToolsEnabled() ? { tools:TOOLS } : {})
       }),
       signal
@@ -7312,14 +7405,17 @@ function renderToolExecution(execution){
     status:"sent"
   }, { render:false, cache:false });
 }
-async function apiSend(text, attachments, reservedHumanId){
+async function apiSend(text, attachments, reservedHumanId, options = {}){
   if (currentConversation() && currentConversation().readOnly) throw new Error("read-only conversation");
   if (USE_MOCK) return Mock.send(text || "");
   const humanId = Number(reservedHumanId) > 0 ? Number(reservedHumanId) : localMessageId();
-  const generationController = new AbortController();
-  activeGenerationController = generationController;
-  setGenerationButton(true);
+  const generationController = options.controller || new AbortController();
+  if (!options.voice){
+    activeGenerationController = generationController;
+    setGenerationButton(true);
+  }
   showTyping();
+  let finalText = "";
   try{
     const messages = gatewayConversation();
     if (attachments && attachments.length && messages.length){
@@ -7335,12 +7431,13 @@ async function apiSend(text, attachments, reservedHumanId){
     for (let toolRound = 0; toolRound < 8; toolRound++){
       let response;
       try{
-        response = await requestGateway(outboundMessages, systemContent, generationController.signal);
+        response = await requestGateway(outboundMessages, systemContent, generationController.signal, options);
       }catch(error){
         if (generationController.signal.aborted) return { id:humanId, aborted:true };
         throw error;
       }
-      const streamed = await consumeAnthropicStream(response, localMessageId(), generationController.signal);
+      const streamed = await consumeAnthropicStream(response, localMessageId(), generationController.signal, options);
+      finalText = streamed.text || "";
       if (streamed.interrupted || generationController.signal.aborted) return { id:humanId, aborted:true };
       if (!streamed.toolUses.length) break;
       outboundMessages.push({ role:"assistant", content:streamed.contentBlocks });
@@ -7359,9 +7456,9 @@ async function apiSend(text, attachments, reservedHumanId){
       });
       if (toolRound === 7) throw new Error("Tool loop exceeded 8 rounds");
     }
-    return { id:humanId };
+    return { id:humanId, text:finalText };
   }finally{
-    if (activeGenerationController === generationController){
+    if (!options.voice && activeGenerationController === generationController){
       activeGenerationController = null;
       setGenerationButton(false);
     }
@@ -7374,7 +7471,9 @@ function blobToDataUrl(blob){
 async function apiUpload(blob, name, mime){
   return { url:await blobToDataUrl(blob), name, size:blob.size, mime, kind:/^image\//.test(mime || "") ? "image" : "file" };
 }
-async function apiVoiceText(text){ return apiSend(text); }
+async function apiVoiceText(text, options = {}, reservedHumanId){
+  return apiSend(text, null, reservedHumanId, { ...options, voice:true });
+}
 async function apiVoiceBlob(){ throw new Error("Voice gateway hook is not configured"); }
 async function apiCallEvent(){ return { ok:true }; }
 async function apiTts(text){
