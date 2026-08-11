@@ -3207,6 +3207,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let bars = [];
   let deepgramSocket = null, deepgramWanted = false, deepgramFinal = "", deepgramInterim = "";
   let deepgramSilenceTimer = null, deepgramReconnectTimer = null, deepgramGeneration = 0;
+  let deepgramLastVoiceAt = 0, deepgramLastVadRefreshAt = 0;
   let sttAudioCtx = null, sttSource = null, sttProcessor = null, sttSilentGain = null;
   let mediaStream = null;
   let transcriptPaintRaf = null, transcriptState = { text:"", caret:false };
@@ -3476,11 +3477,18 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     }
     deepgramFinal = "";
     deepgramInterim = "";
+    deepgramLastVoiceAt = 0;
+    deepgramLastVadRefreshAt = 0;
   }
 
   function finishDeepgramAfterSilence(){
     deepgramSilenceTimer = null;
     if (!open || muted || callTurnBusy) return;
+    const quietFor = Date.now() - deepgramLastVoiceAt;
+    if (deepgramLastVoiceAt && quietFor < 3000){
+      deepgramSilenceTimer = setTimeout(finishDeepgramAfterSilence, 3000 - quietFor);
+      return;
+    }
     const finalText = [deepgramFinal, deepgramInterim].filter(Boolean).join(" ").trim();
     stopDeepgramStt();
     if (finalText){
@@ -3493,6 +3501,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   }
 
   function resetDeepgramSilenceTimer(){
+    deepgramLastVoiceAt = Date.now();
     if (deepgramSilenceTimer) clearTimeout(deepgramSilenceTimer);
     deepgramSilenceTimer = setTimeout(finishDeepgramAfterSilence, 3000);
   }
@@ -3587,8 +3596,16 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       sttProcessor.onaudioprocess = event => {
         const socket = deepgramSocket;
         if (!deepgramWanted || !socket || socket.readyState !== WebSocket.OPEN) return;
-        if (socket.bufferedAmount > DEEPGRAM_MAX_BUFFERED_BYTES) return;
         const samples = event.inputBuffer.getChannelData(0);
+        let energy = 0;
+        for (let i = 0; i < samples.length; i += 4) energy += samples[i] * samples[i];
+        const rms = Math.sqrt(energy / Math.ceil(samples.length / 4));
+        const now = Date.now();
+        if (rms > 0.014 && (deepgramFinal || deepgramInterim) && now - deepgramLastVadRefreshAt > 180){
+          deepgramLastVadRefreshAt = now;
+          resetDeepgramSilenceTimer();
+        }
+        if (socket.bufferedAmount > DEEPGRAM_MAX_BUFFERED_BYTES) return;
         try{ socket.send(pcm16At16k(samples, captureCtx.sampleRate)); }catch(e){}
       };
       connectDeepgramSocket(generation);
