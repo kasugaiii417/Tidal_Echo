@@ -6320,10 +6320,32 @@ async function readConversationIndexed(id = activeConversationId){
       tx.oncomplete = () => {
         const primary = primaryReq.result && Array.isArray(primaryReq.result.messages) ? primaryReq.result.messages : null;
         const backup = backupReq.result && Array.isArray(backupReq.result.messages) ? backupReq.result.messages : null;
-        const recovered = primary && primary.length ? primary : (backup && backup.length ? backup : primary);
-        if ((!primary || !primary.length) && backup && backup.length) console.warn("Recovered conversation from IndexedDB backup", id, backup.length);
+        let recovered = primary;
+        let repairedFromBackup = false;
+        if (backup && backup.length){
+          const merged = new Map();
+          backup.forEach(message => {
+            const key = msgKey(message && message.id);
+            if (!deletedKeys.has(key)) merged.set(key, message);
+          });
+          (primary || []).forEach(message => {
+            const key = msgKey(message && message.id);
+            if (deletedKeys.has(key)) merged.delete(key); else merged.set(key, message);
+          });
+          recovered = Array.from(merged.values());
+          if (!primary || recovered.length > primary.length){
+            repairedFromBackup = true;
+            console.warn("Recovered missing conversation messages from IndexedDB backup", { id, primary:primary ? primary.length : 0, recovered:recovered.length });
+          }
+        }
         db.close();
-        resolve(recovered === null ? null : recovered.sort((a, b) => msgNum(a.id) - msgNum(b.id)));
+        const sortedRecovered = recovered === null ? null : recovered.sort((a, b) => msgNum(a.id) - msgNum(b.id));
+        // Repair the primary immediately, before the UI narrows the in-memory
+        // window to its latest page and schedules another partial save.
+        if (repairedFromBackup && sortedRecovered){
+          queueConversationIndexedWrite(id, sortedRecovered, { allowShrink:true }).catch(error => console.error("conversation backup repair failed", error));
+        }
+        resolve(sortedRecovered);
       };
       primaryReq.onerror = () => reject(primaryReq.error || new Error("conversation cache read"));
       backupReq.onerror = () => reject(backupReq.error || new Error("conversation backup read"));
@@ -6336,22 +6358,29 @@ async function writeConversationIndexed(id, messages, { allowShrink = false } = 
     const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
     const store = tx.objectStore(CONVERSATION_CACHE_STORE);
     const currentReq = store.get(id);
-    let skipped = false;
     currentReq.onsuccess = () => {
       const current = currentReq.result && Array.isArray(currentReq.result.messages) ? currentReq.result.messages : null;
-      if (!allowShrink && current && messages.length < current.length){
-        skipped = true;
-        console.warn("Refusing to overwrite IndexedDB conversation with a shorter snapshot", { id, stored:current.length, incoming:messages.length });
-        return;
-      }
+      let nextMessages = messages;
+      // The UI keeps only a recent window in memory. Never replace the full
+      // IndexedDB conversation with that partial snapshot: overlay it by ID and
+      // remove only messages the user explicitly deleted.
       if (current){
-        const backupMessages = allowShrink && messages.length === 0 ? [] : current;
-        store.put({ id:`${id}:messages_backup`, messages:backupMessages, updatedAt:currentReq.result.updatedAt || Date.now() });
+        const merged = new Map();
+        current.forEach(message => {
+          const key = msgKey(message && message.id);
+          if (!deletedKeys.has(key)) merged.set(key, message);
+        });
+        messages.forEach(message => {
+          const key = msgKey(message && message.id);
+          if (deletedKeys.has(key)) merged.delete(key); else merged.set(key, message);
+        });
+        nextMessages = Array.from(merged.values()).sort((a, b) => msgNum(a.id) - msgNum(b.id));
+        store.put({ id:`${id}:messages_backup`, messages:current, updatedAt:currentReq.result.updatedAt || Date.now() });
       }
-      store.put({ id, messages, updatedAt:Date.now() });
+      store.put({ id, messages:nextMessages, updatedAt:Date.now() });
     };
     currentReq.onerror = () => { try{ tx.abort(); }catch(_){} };
-    tx.oncomplete = () => { db.close(); resolve({ saved:!skipped, skipped }); };
+    tx.oncomplete = () => { db.close(); resolve({ saved:true, skipped:false }); };
     tx.onerror = () => { const error = tx.error || new Error("conversation cache write"); db.close(); reject(error); };
     tx.onabort = () => { const error = tx.error || new Error("conversation cache aborted"); db.close(); reject(error); };
   });
@@ -7684,19 +7713,23 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
     throw new Error("Gateway returned no text");
   }
   const visibleText = text ? interceptIncomingCallMarker(interceptMemoryOperations(text)) : "";
-  const chunks = visibleText ? splitAssistantBubbleText(visibleText) : [];
+  const statusProcessed = visibleText
+    ? extractAssistantStatus({ from:"ai", text:visibleText })
+    : null;
+  const renderableText = statusProcessed && !statusProcessed._statusOnly ? statusProcessed.text : "";
+  const chunks = renderableText ? splitAssistantBubbleText(renderableText) : [];
   if (!chunks.length){
     streamChunkIds.forEach(id => removeMessage(id, { render:false, cache:false }));
     streamChunkIds.length = 0;
     scheduleRender({ stickToBottom:nearBottom() });
-    scheduleCacheSave();
+    await flushMessageCacheNow();
     return { text, contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted };
   }
   const uncachedUsageTokens = Number.isFinite(uncachedInputTokens) || Number.isFinite(outputTokens)
     ? (Number.isFinite(uncachedInputTokens) ? uncachedInputTokens : 0) + (Number.isFinite(outputTokens) ? outputTokens : 0)
     : null;
   reconcileStreamChunks(chunks, "sent", uncachedUsageTokens);
-  scheduleCacheSave();
+  await flushMessageCacheNow();
   if (!interrupted) playReceiveSound();
   return { text, contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted };
 }
