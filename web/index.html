@@ -20,6 +20,7 @@
      explicit capability flag is required by older/mobile Safari builds before
      they honor black-translucent. -->
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <meta name="apple-mobile-web-app-title" content="___">
@@ -234,13 +235,14 @@
     text-shadow: 0 1px 18px rgba(255,255,255,0.3);
   }
   .peerpill .status{
-    font-family: var(--font-en), var(--font-cn);
+    font-family: var(--font-cn);
     font-size: clamp(13px, 1.9vw, 17px);
     color: var(--text);
     opacity: .82;
     margin-top: 4px;
     letter-spacing: 0;
   }
+  .peerpill .status .status-cn{ font-size:.84em; }
   .app[data-conn="reconnecting"] .peerpill .status{ color:#9a8061; }
   .peerpill .status.typing{
     color: #4f9fda;
@@ -1688,7 +1690,16 @@
   .memory-entry{ padding:14px 2px; border-top:1px solid var(--hairline); }
   .memory-entry:first-child{ border-top:0; }
   .memory-entry-id{ margin-bottom:7px; color:var(--text-faint); font-size:11px; font-family:ui-monospace,"SF Mono",Menlo,monospace; }
-  .memory-entry-content{ color:var(--text); font-size:14px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .memory-entry-content{
+    color:var(--text); font-size:14px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere;
+    height:13.2em; overflow:hidden; cursor:pointer;
+    -webkit-mask-image:linear-gradient(180deg,#000 0%,#000 84%,transparent 100%);
+    mask-image:linear-gradient(180deg,#000 0%,#000 84%,transparent 100%);
+  }
+  .memory-entry.expanded .memory-entry-content{
+    height:auto; overflow:visible; cursor:zoom-out;
+    -webkit-mask-image:none; mask-image:none;
+  }
   .memory-entry-edit{ margin-top:10px; }
   .memory-empty{ padding:32px 8px; text-align:center; color:var(--text-faint); line-height:1.7; }
 
@@ -4325,7 +4336,25 @@ function renderStatus(){
     const currentAssistantStatus = assistantStatus && Date.now() - assistantStatusAt < ASSISTANT_STATUS_TTL
       ? assistantStatus
       : "";
-    statusEl.textContent = appEl.dataset.conn === "online" && currentAssistantStatus ? currentAssistantStatus : connLabel;
+    const label = appEl.dataset.conn === "online" && currentAssistantStatus ? currentAssistantStatus : connLabel;
+    statusEl.replaceChildren();
+    if (currentAssistantStatus && label === currentAssistantStatus){
+      const pipeAt = label.indexOf("|");
+      const chineseAt = pipeAt < 0 ? label.search(/[\u3400-\u9fff]/) : -1;
+      const splitAt = pipeAt >= 0 ? pipeAt + 1 : chineseAt;
+      if (splitAt > 0){
+        statusEl.append(document.createTextNode(label.slice(0, splitAt)));
+        const chinese = document.createElement("span");
+        chinese.className = "status-cn";
+        chinese.textContent = label.slice(splitAt);
+        statusEl.append(chinese);
+      }else if (chineseAt === 0){
+        const chinese = document.createElement("span");
+        chinese.className = "status-cn";
+        chinese.textContent = label;
+        statusEl.append(chinese);
+      }else statusEl.textContent = label;
+    }else statusEl.textContent = label;
     statusEl.classList.remove("typing");
   }
 }
@@ -4360,7 +4389,8 @@ function extractAssistantStatus(raw){
   }catch(_){}
   scheduleAssistantStatusExpiry();
   renderStatus();
-  return { ...raw, text:raw.text.replace(tagPattern, "").trim() };
+  const visibleText = raw.text.replace(tagPattern, "").trim();
+  return { ...raw, text:visibleText, _statusOnly:!visibleText };
 }
 function assistantDisplayText(message){
   const text = String(message && message.text || "");
@@ -4901,6 +4931,10 @@ function resetChatState(){
 function setMessage(raw, { render = true, cache = true } = {}){
   raw = extractAssistantStatus(raw);
   const key = msgKey(raw.id);
+  if (raw._statusOnly){
+    if (messageByKey.has(key)) removeMessage(key, { render, cache });
+    return undefined;
+  }
   if (deletedKeys.has(key)) return undefined;   // 用户已在本地删除 → 任何来源(history/SSE/缓存)都不再收进来
   const existing = messageByKey.get(key);
   if (existing){
@@ -6841,6 +6875,7 @@ const SYSTEM_PROMPT_KEY = "system_prompt";
 const MEMORIES_KEY = "memories";
 let systemPromptHintTimer = null;
 let editingMemoryId = null;
+const expandedMemoryIds = new Set();
 
 function loadSystemPrompt(){
   try{ return localStorage.getItem(SYSTEM_PROMPT_KEY) || ""; }catch(_){ return ""; }
@@ -6875,12 +6910,12 @@ function renderMemoryList(){
   const rows = loadMemories();
   memoryList.innerHTML = rows.length ? rows.map(row => {
     const editing = editingMemoryId === row.id;
-    return `<article class="memory-entry" data-memory-id="${row.id}">
+    return `<article class="memory-entry${expandedMemoryIds.has(row.id) ? " expanded" : ""}" data-memory-id="${row.id}">
       <div class="memory-entry-id">#${row.id}</div>
       ${editing
         ? `<textarea class="memory-textarea memory-entry-edit" data-memory-edit-input="${row.id}">${escapeHtml(row.content)}</textarea>
            <div class="memory-entry-actions"><button class="memory-small-btn" type="button" data-memory-cancel="${row.id}">Cancel</button><button class="memory-small-btn primary" type="button" data-memory-save="${row.id}">Save</button></div>`
-        : `<div class="memory-entry-content">${escapeHtml(row.content)}</div>
+        : `<div class="memory-entry-content" data-memory-toggle="${row.id}" role="button" tabindex="0" aria-expanded="${expandedMemoryIds.has(row.id)}">${escapeHtml(row.content)}</div>
            <div class="memory-entry-actions"><button class="memory-small-btn" type="button" data-memory-edit="${row.id}">Edit</button><button class="memory-small-btn danger" type="button" data-memory-delete="${row.id}">Delete</button></div>`}
     </article>`;
   }).join("") : '<div class="memory-empty">No memories yet.<br>Tap ＋ to add one.</div>';
@@ -7000,10 +7035,17 @@ if (memoryNewSave) memoryNewSave.addEventListener("click", () => {
   memoryNewEditor.classList.remove("open");
 });
 if (memoryList) memoryList.addEventListener("click", e => {
+  const toggle = e.target.closest("[data-memory-toggle]");
   const edit = e.target.closest("[data-memory-edit]");
   const cancel = e.target.closest("[data-memory-cancel]");
   const save = e.target.closest("[data-memory-save]");
   const del = e.target.closest("[data-memory-delete]");
+  if (toggle){
+    const id = Number(toggle.dataset.memoryToggle);
+    if (expandedMemoryIds.has(id)) expandedMemoryIds.delete(id); else expandedMemoryIds.add(id);
+    renderMemoryList();
+    return;
+  }
   if (edit){ editingMemoryId = Number(edit.dataset.memoryEdit); renderMemoryList(); return; }
   if (cancel){ editingMemoryId = null; renderMemoryList(); return; }
   if (save){
@@ -7446,7 +7488,13 @@ function gatewayConversation(){
   const systemPrompt = loadSystemPrompt();
   const memories = loadMemories();
   const memoryXml = memories.map(m => `<record><id>${m.id}</id><content>${m.content}</content></record>`).join("\n");
-  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>";
+  const memoryProtocol = `## Memory Operations
+You can manage the client-side memory archive by emitting one fenced code block tagged memory_operation:
+\`\`\`memory_operation
+{"action":"add"|"edit"|"delete","id":number,"content":"text"}
+\`\`\`
+For edit and delete, use an existing record ID exactly. For add, omit id or choose an unused positive ID. Content is required for add/edit and ignored for delete. The app executes the operation and hides the code block from chat. Use one operation block at a time.`;
+  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol;
   const history = gatewayHistoryMessages();
   return [{ role:"system", content:systemContent }, ...history];
 }
