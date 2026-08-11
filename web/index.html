@@ -16,7 +16,10 @@
 <link href="https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5/500.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/@fontsource/pinyon-script@5/400.min.css" rel="stylesheet">
 <meta name="theme-color" content="#F4F4F5">
-<!-- iOS launch mode is manifest-only; legacy Apple fullscreen meta breaks bottom viewport. -->
+<!-- Let standalone iOS paint the page beneath the status-bar safe area. The
+     manifest still owns launch/display mode, so the legacy fullscreen flag is
+     intentionally not restored. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <meta name="apple-mobile-web-app-title" content="___">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -143,6 +146,13 @@
   }
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html{
+    background-color:var(--bg);
+    background-image:var(--wall-default);
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+  }
   html, body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
   body{ position: fixed; inset: 0; width: 100%;
     background: var(--bg);
@@ -4350,6 +4360,7 @@ let activeConversationId = (() => {
 })();
 let chatMessages = [];
 let messageByKey = new Map();
+let messageOrderVersion = 0, sortedMessageVersion = -1, sortedMessageCache = [];
 let virtualRows = [];
 let rowHeights = new Map();
 let prefixSums = new Float64Array(1);
@@ -4364,6 +4375,7 @@ let renderedStart = -1;
 let renderedEnd = -1;
 let renderedSignature = "";
 let cacheTimer = null;
+let pendingCacheAllowShrink = false;
 let loadingOlder = false;
 let hasMoreOlder = true;
 let lastScrollTop = 0;
@@ -4581,14 +4593,14 @@ function fileIconSvg(){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"/><path d="M7 3h8l5 5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19V4.5A1.5 1.5 0 0 1 6.5 3z"/></svg>`;
 }
 function renderAttachments(atts){
-  return (atts || []).map((a) => {
+  return (atts || []).map((a, attachmentIndex) => {
     const up = a.uploading ? " att-uploading" : "";
     const fail = a.failed ? " att-failed" : "";
     if (a.kind === "image"){
       const src = localPreview.get(a.url) || a.localUrl || attUrl(a.url);
       const href = attUrl(a.url) || a.localUrl || "";
       const ratio = Number(a.width) > 0 && Number(a.height) > 0 ? Math.max(0.35, Math.min(2.6, Number(a.width) / Number(a.height))) : 1.04;
-      return `<a class="att-img-link${up}${fail}" style="--att-ratio:${ratio.toFixed(4)}" href="${escapeHtml(href)}" target="_blank" rel="noopener"><img class="att-img" decoding="async" src="${escapeHtml(src)}" alt="${escapeHtml(a.name || "图片")}" loading="lazy"></a>`;
+      return `<a class="att-img-link${up}${fail}" data-attachment-index="${attachmentIndex}" style="--att-ratio:${ratio.toFixed(4)}" href="${escapeHtml(href)}" target="_blank" rel="noopener"><img class="att-img" decoding="async" src="${escapeHtml(src)}" alt="${escapeHtml(a.name || "图片")}" loading="lazy"></a>`;
     }
     return `<a class="att-file${up}${fail}" href="${escapeHtml(attUrl(a.url))}" target="_blank" rel="noopener" download="${escapeHtml(a.name || "file")}"><span class="att-file-ic">${fileIconSvg()}</span><span class="att-file-meta"><span class="att-file-name">${escapeHtml(a.name || "文件")}</span><span class="att-file-size">${fmtSize(a.size)}${a.uploading ? " · 上传中…" : (a.failed ? " · 失败" : "")}</span></span></a>`;
   }).join("");
@@ -4608,7 +4620,11 @@ function sortId(m){
   return n > 0 ? n : Number.MAX_SAFE_INTEGER;
 }
 function sortedMessages(){
-  return chatMessages.slice().sort((a, b) => (sortId(a) - sortId(b)) || (a._order - b._order));
+  if (sortedMessageVersion !== messageOrderVersion){
+    sortedMessageCache = chatMessages.slice().sort((a, b) => (sortId(a) - sortId(b)) || (a._order - b._order));
+    sortedMessageVersion = messageOrderVersion;
+  }
+  return sortedMessageCache;
 }
 function stripInlineThinkingText(text){
   let s = String(text || "");
@@ -4772,12 +4788,22 @@ function invalidateRows(){
   renderedEnd = -1;
   renderedSignature = "";
 }
+function invalidateMessagePaint(key){
+  prefixSumsDirty = true;
+  renderedStart = -1;
+  renderedEnd = -1;
+  renderedSignature = "";
+  if (key) rowHeights.delete(`m:${key}`);
+}
 function normalizeMessage(m){
   const key = msgKey(m.id);
   return { ...m, id: m.id, meta: m.meta || {}, _key: key, _order: m._order || ++messageSeq };
 }
 function resetChatState(){
   chatMessages = [];
+  messageOrderVersion++;
+  sortedMessageVersion = -1;
+  sortedMessageCache = [];
   messageByKey = new Map();
   virtualRows = [];
   rowHeights = new Map();
@@ -4811,13 +4837,17 @@ function setMessage(raw, { render = true, cache = true } = {}){
   if (deletedKeys.has(key)) return undefined;   // 用户已在本地删除 → 任何来源(history/SSE/缓存)都不再收进来
   const existing = messageByKey.get(key);
   if (existing){
+    const structureChanged = existing.from !== raw.from || existing.kind !== raw.kind || existing.ts !== raw.ts;
     Object.assign(existing, raw, { id: raw.id, meta: raw.meta || existing.meta || {}, _key: key });
+    if (structureChanged) invalidateRows();
+    else invalidateMessagePaint(key);
   }else{
     const m = normalizeMessage(raw);
     chatMessages.push(m);
     messageByKey.set(key, m);
+    messageOrderVersion++;
+    invalidateRows();
   }
-  invalidateRows();
   const idNum = msgNum(raw.id);
   if (idNum > lastId) lastId = idNum;
   if (render) scheduleRender({ stickToBottom: nearBottom() });
@@ -4831,6 +4861,7 @@ function removeMessage(key, { render = true, cache = true } = {}){
   if (!m) return null;
   messageByKey.delete(k);
   chatMessages = chatMessages.filter((x) => x !== m);
+  messageOrderVersion++;
   if (m.from === "ai" && parseAssistantVoiceSegments(m.text).length){
     const audioKey = `${activeConversationId}:${k}`;
     const entry = ttsAudioCache.get(audioKey);
@@ -4862,6 +4893,7 @@ function confirmOptimistic(tempKey, serverId, serverMessage){
     _key: realKey
   });
   messageByKey.set(realKey, existing);
+  messageOrderVersion++;
   seen.add(realKey);
   invalidateRows();
   const idNum = msgNum(serverId);
@@ -5870,12 +5902,13 @@ function applyReaction(ev){
   if (!menu) return;
   const scrim = $("#msgMenuScrim");
   const actions = $("#msgMenuActions");
-  let cloneEl = null, pressTimer = null, pressBubble = null, openKey = null;
+  let cloneEl = null, pressTimer = null, pressBubble = null, openKey = null, openAttachmentIndex = null;
+  let pressAttachmentIndex = null;
   let startX = 0, startY = 0;
   let swallowClick = false;   // 长按弹出后,iOS 会补发一个合成 click → 吞掉它,免得菜单刚开就被关
 
   const isOpen = () => menu.classList.contains("open");
-  function clearPress(){ if (pressTimer){ clearTimeout(pressTimer); pressTimer = null; } pressBubble = null; }
+  function clearPress(){ if (pressTimer){ clearTimeout(pressTimer); pressTimer = null; } pressBubble = null; pressAttachmentIndex = null; }
 
   function bubbleInfo(bubble){
     const rowEl = bubble.closest("[data-message-key]");
@@ -5885,14 +5918,17 @@ function applyReaction(ev){
     return { key: rowEl.dataset.messageKey, msg, side: rowEl.classList.contains("human") ? "human" : "ai" };
   }
 
-  function open(bubble){
+  function open(bubble, attachmentIndex = null){
     if (isOpen()) return;
     const info = bubbleInfo(bubble);
     if (!info) return;
     try{ const ae = document.activeElement; if (ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) ae.blur(); }catch(_){}  // 聚焦的输入框长按时会弹自己的原生菜单 → 先失焦
     openKey = info.key;
+    openAttachmentIndex = Number.isInteger(attachmentIndex) ? attachmentIndex : null;
     const copyBtn = actions.querySelector('[data-act="copy"]');
-    if (copyBtn) copyBtn.style.display = info.msg.text ? "" : "none";   // 纯图无文字 → 只留 Delete
+    if (copyBtn) copyBtn.style.display = openAttachmentIndex == null && info.msg.text ? "" : "none";
+    const deleteLabel = actions.querySelector('[data-act="delete"] span');
+    if (deleteLabel) deleteLabel.textContent = openAttachmentIndex == null ? "Delete" : "Delete image";
     const r = bubble.getBoundingClientRect();
     // 1) 克隆气泡,固定原位,准备轻微抬起
     cloneEl = bubble.cloneNode(true);
@@ -5924,6 +5960,7 @@ function applyReaction(ev){
     menu.classList.remove("open");
     menu.setAttribute("aria-hidden", "true");
     openKey = null;
+    openAttachmentIndex = null;
     const dead = cloneEl; cloneEl = null;
     setTimeout(() => { if (dead && dead.parentNode) dead.parentNode.removeChild(dead); }, 300);
   }
@@ -5949,8 +5986,27 @@ function applyReaction(ev){
   }
   function doDelete(){
     const key = openKey;                       // close() 会清空 openKey,先抓住
+    const attachmentIndex = openAttachmentIndex;
+    const msg = key != null ? messageByKey.get(msgKey(key)) : null;
     close();
     if (key == null) return;
+    if (attachmentIndex != null && msg){
+      const attachments = (msg.meta && Array.isArray(msg.meta.attachments)) ? msg.meta.attachments.slice() : [];
+      const removed = attachments.splice(attachmentIndex, 1)[0];
+      if (!removed) return;
+      const previewUrl = localPreview.get(removed.url) || removed.localUrl;
+      if (previewUrl && /^blob:/.test(previewUrl)){ try{ URL.revokeObjectURL(previewUrl); }catch(_){} }
+      if (removed.url) localPreview.delete(removed.url);
+      if (!attachments.length && !String(msg.text || "").trim()){
+        deletedKeys.add(msgKey(key));
+        persistDeletedKeys();
+        removeMessage(key);
+      }else{
+        setMessage({ ...msg, meta:{ ...(msg.meta || {}), attachments } });
+      }
+      showToast("图片已删除");
+      return;
+    }
     deletedKeys.add(msgKey(key));              // 记下来 → 刷新/backfill 都不会让它跑回来
     persistDeletedKeys();
     removeMessage(key);                        // 从内存 + IndexedDB 缓存移除并重渲
@@ -5981,9 +6037,10 @@ function applyReaction(ev){
       if (!row || !row.classList.contains("human")) return;
     }
     pressBubble = bubble;
+    pressAttachmentIndex = imageLink ? Number(imageLink.dataset.attachmentIndex) : null;
     const t = e.touches[0]; startX = t.clientX; startY = t.clientY;
     clearTimeout(pressTimer);
-    pressTimer = setTimeout(() => { pressTimer = null; if (pressBubble === bubble) open(bubble); }, 450);
+    pressTimer = setTimeout(() => { pressTimer = null; if (pressBubble === bubble) open(bubble, Number.isInteger(pressAttachmentIndex) ? pressAttachmentIndex : null); }, 450);
   }, { passive:true });
   scrollEl.addEventListener("touchmove", (e) => {
     if (!pressBubble || !e.touches.length) return;
@@ -5998,8 +6055,11 @@ function applyReaction(ev){
     const bubble = e.target.closest(".bubble, .tool-card");
     if (!bubble || !scrollEl.contains(bubble)) return;
     if (!bubbleInfo(bubble)) return;
+    const imageLink = e.target.closest(".att-img-link");
+    if (imageLink && !bubble.closest(".row.human")) return;
     e.preventDefault();
-    open(bubble);
+    const attachmentIndex = imageLink ? Number(imageLink.dataset.attachmentIndex) : null;
+    open(bubble, Number.isInteger(attachmentIndex) ? attachmentIndex : null);
   });
 
   scrim.addEventListener("click", () => { if (swallowClick){ swallowClick = false; return; } close(); });
@@ -6268,7 +6328,9 @@ function writeMessageCache({ allowShrink = false } = {}){
 }
 function flushMessageCacheNow(){
   if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
-  return writeMessageCache();
+  const allowShrink = pendingCacheAllowShrink;
+  pendingCacheAllowShrink = false;
+  return writeMessageCache({ allowShrink });
 }
 async function navigateToAlbum(){
   await flushMessageCacheNow();
@@ -6279,8 +6341,14 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushMessageCacheNow();
 });
 function scheduleCacheSave(options = {}){
-  if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
-  return writeMessageCache(options);
+  pendingCacheAllowShrink = pendingCacheAllowShrink || !!options.allowShrink;
+  if (cacheTimer) return;
+  cacheTimer = setTimeout(() => {
+    cacheTimer = null;
+    const allowShrink = pendingCacheAllowShrink;
+    pendingCacheAllowShrink = false;
+    writeMessageCache({ allowShrink });
+  }, 100);
 }
 
 function currentConversation(){
@@ -6352,8 +6420,7 @@ function applyConversationMode(){
 async function enterConversation(id){
   const target = conversations.find(c => c.id === id);
   if (!target) return;
-  if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
-  await writeMessageCache();
+  await flushMessageCacheNow();
   activeConversationId = target.id;
   saveConversationIndex();
   const messages = await readCachedMessages();
@@ -6376,6 +6443,7 @@ async function deleteConversation(id){
   if (!window.confirm(`确认删除“${target.title || "这个对话"}”？删除后无法恢复。`)) return;
   const deletingActive = target.id === activeConversationId;
   if (deletingActive && cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
+  if (deletingActive) pendingCacheAllowShrink = false;
   try{ localStorage.removeItem(conversationMessagesKey(target.id)); }catch(_){}
   void deleteConversationIndexed(target.id);
   void deleteConversationTtsAudio(target.id);
@@ -6628,8 +6696,7 @@ async function exportConversation(id){
   const conversation = conversations.find(item => item.id === id);
   if (!conversation) return;
   if (id === activeConversationId){
-    if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
-    await writeMessageCache();
+    await flushMessageCacheNow();
   }
   const storedMessages = await readConversationIndexed(id) || readConversationLocal(id) || [];
   const exportedMessages = storedMessages.map(message => ({
@@ -7281,8 +7348,17 @@ function gatewayContentForMessage(m, includeTimestamp = false){
   return blocks;
 }
 function gatewayHistoryMessages(){
-  return sortedMessages()
-    .filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.status !== "failed")
+  const ordered = sortedMessages();
+  const recent = [];
+  let remainingUsers = contextTurnLimit();
+  for (let index = ordered.length - 1; index >= 0; index--){
+    const m = ordered[index];
+    if ((m.from !== "human" && m.from !== "ai") || m.kind === "thinking" || m.kind === "act" || m.status === "failed") continue;
+    recent.push(m);
+    if (m.from === "human" && --remainingUsers === 0) break;
+  }
+  recent.reverse();
+  return recent
     .map(m => {
       if (m.kind === "tool"){
         const meta = m.meta || {};
@@ -7298,21 +7374,12 @@ function gatewayHistoryMessages(){
       return { role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m, m.from === "human") };
     });
 }
-function keepRecentUserTurns(history, limit){
-  let remaining = limit;
-  for (let index = history.length - 1; index >= 0; index--){
-    if (history[index].role !== "user") continue;
-    remaining--;
-    if (remaining === 0) return history.slice(index);
-  }
-  return history;
-}
 function gatewayConversation(){
   const systemPrompt = loadSystemPrompt();
   const memories = loadMemories();
   const memoryXml = memories.map(m => `<record><id>${m.id}</id><content>${m.content}</content></record>`).join("\n");
   const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>";
-  const history = keepRecentUserTurns(gatewayHistoryMessages(), contextTurnLimit());
+  const history = gatewayHistoryMessages();
   return [{ role:"system", content:systemContent }, ...history];
 }
 function localMessageId(){
