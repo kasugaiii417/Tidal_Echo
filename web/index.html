@@ -3481,6 +3481,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       const result = await apiVoiceText(clean + sense, {
         source:source || "browser_speech",
         call_id:callId,
+        transcript:clean + sense,
         controller:callTurnController,
         onText(fullText){
           if (!open) return;
@@ -7251,7 +7252,9 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
   try{
     while (true){
       const { value, done } = await reader.read();
-      buffer += decoder.decode(value || new Uint8Array(), { stream:!done });
+      const chunk = decoder.decode(value || new Uint8Array(), { stream:!done });
+      if (options.voice && chunk) alert(">>> SSE CHUNK: " + chunk);
+      buffer += chunk;
       const lines = buffer.split(/\r?\n/); buffer = lines.pop() || "";
       for (const line of lines){
         if (!line){ flush(); continue; }
@@ -7296,20 +7299,27 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
 }
 async function requestGateway(messages, systemContent, signal, options = {}){
   let response;
+  const requestBody = {
+    system:systemContent || "",
+    messages,
+    model:CONFIG.MODEL,
+    stream:true,
+    ...(options.voice ? { voice:true } : {}),
+    ...(fetchToolsEnabled() ? { tools:TOOLS } : {})
+  };
   try{
+    if (options.voice){
+      alert(">>> SENDING TO GATEWAY: " + String(options.transcript || ""));
+      alert(">>> GATEWAY URL: " + GATEWAY_URL);
+      alert(">>> REQUEST BODY: " + JSON.stringify(requestBody));
+    }
     response = await fetch(GATEWAY_URL, {
       method:"POST",
       headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"text/event-stream" },
-      body:JSON.stringify({
-        system:systemContent || "",
-        messages,
-        model:CONFIG.MODEL,
-        stream:true,
-        ...(options.voice ? { voice:true } : {}),
-        ...(fetchToolsEnabled() ? { tools:TOOLS } : {})
-      }),
+      body:JSON.stringify(requestBody),
       signal
     });
+    if (options.voice) alert(">>> GATEWAY RESPONSE STATUS: " + response.status);
   }catch(e){
     if (signal && signal.aborted) throw e;
     alert("FETCH ERROR: " + (e.message || JSON.stringify(e)));
