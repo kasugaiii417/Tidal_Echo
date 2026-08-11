@@ -156,7 +156,11 @@
   }
   html, body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
   body{ position: fixed; inset: 0; width: 100%;
-    background: var(--bg);
+    background-color: var(--bg);
+    background-image: var(--wall-default);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     color: var(--text);
     font-family: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
     font-size: clamp(15px, 1.55vw, 17px);
@@ -232,7 +236,8 @@
   .peerpill .status{
     font-family: var(--font-en), var(--font-cn);
     font-size: clamp(13px, 1.9vw, 17px);
-    color: var(--text-soft);
+    color: var(--text);
+    opacity: .82;
     margin-top: 4px;
     letter-spacing: 0;
   }
@@ -2718,6 +2723,21 @@ const CONFIG = {
   MODEL:        "claude-opus-4-6",
 };
 const AI_NAME = CONFIG.AI_NAME, HUMAN_NAME = CONFIG.HUMAN_NAME, APP_NAME = CONFIG.APP_NAME;
+const ASSISTANT_STATUS_KEY = "companion_assistant_status";
+const ASSISTANT_STATUS_TIME_KEY = "companion_assistant_status_time";
+const ASSISTANT_STATUS_TTL = 3 * 60 * 60 * 1000;
+let assistantStatus = "";
+let assistantStatusAt = 0;
+let assistantStatusTimer = null;
+
+try{
+  assistantStatus = localStorage.getItem(ASSISTANT_STATUS_KEY) || "";
+  assistantStatusAt = Number(localStorage.getItem(ASSISTANT_STATUS_TIME_KEY)) || 0;
+  if (!assistantStatus || Date.now() - assistantStatusAt >= ASSISTANT_STATUS_TTL){
+    assistantStatus = "";
+    assistantStatusAt = 0;
+  }
+}catch(_){}
 
 const GATEWAY_URL = CONFIG.GATEWAY_URL.replace(/\/$/, "");
 const TTS_URL = new URL("/api/tts", GATEWAY_URL).toString();
@@ -4302,10 +4322,52 @@ function renderStatus(){
       statusEl.classList.add("typing");
     }
   }else{
-    statusEl.textContent = connLabel;
+    const currentAssistantStatus = assistantStatus && Date.now() - assistantStatusAt < ASSISTANT_STATUS_TTL
+      ? assistantStatus
+      : "";
+    statusEl.textContent = appEl.dataset.conn === "online" && currentAssistantStatus ? currentAssistantStatus : connLabel;
     statusEl.classList.remove("typing");
   }
 }
+function scheduleAssistantStatusExpiry(){
+  if (assistantStatusTimer) clearTimeout(assistantStatusTimer);
+  if (!assistantStatus || !assistantStatusAt) return;
+  const remaining = ASSISTANT_STATUS_TTL - (Date.now() - assistantStatusAt);
+  if (remaining <= 0){
+    assistantStatus = "";
+    assistantStatusAt = 0;
+    renderStatus();
+    return;
+  }
+  assistantStatusTimer = setTimeout(() => {
+    assistantStatusTimer = null;
+    assistantStatus = "";
+    assistantStatusAt = 0;
+    renderStatus();
+  }, remaining);
+}
+function extractAssistantStatus(raw){
+  if (!raw || raw.from !== "ai" || typeof raw.text !== "string") return raw;
+  const tagPattern = /«status:\s*(.+?)»/g;
+  let match, extracted = "";
+  while ((match = tagPattern.exec(raw.text)) !== null) extracted = match[1].trim();
+  if (!extracted) return raw;
+  assistantStatus = extracted;
+  assistantStatusAt = Date.now();
+  try{
+    localStorage.setItem(ASSISTANT_STATUS_KEY, assistantStatus);
+    localStorage.setItem(ASSISTANT_STATUS_TIME_KEY, String(assistantStatusAt));
+  }catch(_){}
+  scheduleAssistantStatusExpiry();
+  renderStatus();
+  return { ...raw, text:raw.text.replace(tagPattern, "").trim() };
+}
+function assistantDisplayText(message){
+  const text = String(message && message.text || "");
+  if (!message || message.from !== "ai") return text;
+  return text.replace(/«status:\s*(.+?)»/g, "").replace(/«status:[^»]*$/g, "").trim();
+}
+scheduleAssistantStatusExpiry();
 function setConn(state){
   appEl.dataset.conn = state;
   renderStatus();
@@ -4837,6 +4899,7 @@ function resetChatState(){
   hideNewMsgPill();
 }
 function setMessage(raw, { render = true, cache = true } = {}){
+  raw = extractAssistantStatus(raw);
   const key = msgKey(raw.id);
   if (deletedKeys.has(key)) return undefined;   // 用户已在本地删除 → 任何来源(history/SSE/缓存)都不再收进来
   const existing = messageByKey.get(key);
@@ -5356,6 +5419,7 @@ function makeToolCard(rowData){
 }
 function makeMessage(rowData){
   const m = rowData.message;
+  const displayText = assistantDisplayText(m);
   const row = document.createElement("div");
   row.className = `row ${m.from === "human" ? "human" : "ai"}${rowData.grouped ? " grouped" : ""}${rowData.tail ? " tail" : ""}`;
   row.dataset.id = m.id; row.dataset.from = m.from; row.dataset.ts = tsMs(m); row.dataset.messageKey = m._key;
@@ -5374,8 +5438,8 @@ function makeMessage(rowData){
     : "";
   let _inner = voiceIcon;
   if (atts.length) _inner += renderAttachments(atts);
-  const voiceSegments = m.from === "ai" && m.status !== "streaming" ? parseAssistantVoiceSegments(m.text) : [];
-  if (m.text) _inner += `<span class="txt">${voiceSegments.length ? voiceMessageHtml(m.text, voiceSegments) : renderText(m.text)}</span>`;
+  const voiceSegments = m.from === "ai" && m.status !== "streaming" ? parseAssistantVoiceSegments(displayText) : [];
+  if (displayText) _inner += `<span class="txt">${voiceSegments.length ? voiceMessageHtml(displayText, voiceSegments) : renderText(displayText)}</span>`;
   _inner += `<span class="meta"></span>`;
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
