@@ -497,8 +497,8 @@
   .voice-call-icon{
     display:inline-flex;
     align-items:center;
-    margin-left:5px;
-    color:#fff;
+    margin-right:5px;
+    color:inherit;
     font-size:.82em;
     line-height:1;
     vertical-align:-0.12em;
@@ -3195,6 +3195,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
 
   const VU_BARS = 16;   // 每侧声纹竖条数
   const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev";
+  const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
 
   let open = false;
   let minimized = false;
@@ -3208,6 +3209,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let deepgramSilenceTimer = null, deepgramReconnectTimer = null, deepgramGeneration = 0;
   let sttAudioCtx = null, sttSource = null, sttProcessor = null, sttSilentGain = null;
   let mediaStream = null;
+  let transcriptPaintRaf = null, transcriptState = { text:"", caret:false };
   let audioCtx = null, analyser = null, freqData = null;
   let speakingUtterance = null;
   let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null;
@@ -3309,12 +3311,22 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   }
 
   function setTranscript(text, caretOn = false){
+    transcriptState = { text:String(text || ""), caret:!!caretOn };
+    if (minimized || !open) return;
+    if (transcriptPaintRaf) return;
+    transcriptPaintRaf = requestAnimationFrame(() => {
+      transcriptPaintRaf = null;
+      renderTranscriptState();
+    });
+  }
+
+  function renderTranscriptState(){
     if (!transcript) return;
     transcript.textContent = "";
     const span  = document.createElement("span");
-    span.textContent = text || "";
+    span.textContent = transcriptState.text;
     transcript.appendChild(span);
-    if (!caretOn) return;
+    if (!transcriptState.caret) return;
     const caret = document.createElement("span");
     caret.className = "caret";
     transcript.appendChild(caret);
@@ -3356,6 +3368,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   }
   let vuDecay = null;
   function pulseVu(level){
+    if (minimized) return;
     setWaveLevel(level);
     if (vuDecay) clearTimeout(vuDecay);
     vuDecay = setTimeout(() => setWaveLevel(0), 360);
@@ -3380,10 +3393,12 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       audioCtx.createMediaStreamSource(stream).connect(analyser);
       const loop = () => {
         if (!open || !analyser || !freqData) return;
-        analyser.getByteFrequencyData(freqData);
-        let sum = 0;
-        for (let i = 0; i < freqData.length; i++) sum += freqData[i];
-        setWaveLevel(sum / Math.max(1, freqData.length) / 180);
+        if (!minimized){
+          analyser.getByteFrequencyData(freqData);
+          let sum = 0;
+          for (let i = 0; i < freqData.length; i++) sum += freqData[i];
+          setWaveLevel(sum / Math.max(1, freqData.length) / 180);
+        }
         rafId = requestAnimationFrame(loop);
       };
       loop();
@@ -3572,6 +3587,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       sttProcessor.onaudioprocess = event => {
         const socket = deepgramSocket;
         if (!deepgramWanted || !socket || socket.readyState !== WebSocket.OPEN) return;
+        if (socket.bufferedAmount > DEEPGRAM_MAX_BUFFERED_BYTES) return;
         const samples = event.inputBuffer.getChannelData(0);
         try{ socket.send(pcm16At16k(samples, captureCtx.sampleRate)); }catch(e){}
       };
@@ -3721,11 +3737,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (!open || minimized) return;
     minimized = true;
     overlay.classList.add("minimized");
+    setWaveLevel(0);
   }
   function expandCall(){
     if (!open || !minimized) return;
     minimized = false;
     overlay.classList.remove("minimized");
+    renderTranscriptState();
   }
 
   async function openCall(){
@@ -3775,6 +3793,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     callBtn.classList.remove("active");
     clearInterval(tickId); tickId = null;
     if (resumeTimer){ clearTimeout(resumeTimer); resumeTimer = null; }
+    if (transcriptPaintRaf){ cancelAnimationFrame(transcriptPaintRaf); transcriptPaintRaf = null; }
+    transcriptState = { text:"", caret:false };
     if (vuDecay){ clearTimeout(vuDecay); vuDecay = null; }
     setWaveLevel(0);
     speakSeq++;
@@ -3863,7 +3883,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
                 lyricId = setTimeout(advance, (charCounts[0] / totalChars) * totalMs);
               }
             }
-            const vuTick = setInterval(() => setWaveLevel(0.45 + Math.random() * 0.5), 140);
+            const vuTick = setInterval(() => { if (!minimized) setWaveLevel(0.45 + Math.random() * 0.5); }, 140);
             const stopVu = () => { clearInterval(vuTick); setWaveLevel(0); if (lyricId) clearTimeout(lyricId); };
             const safety = setTimeout(() => { stopVu(); resolve(); }, (audioBuf.duration * 1000) + 3000);
             source.onended = () => { clearTimeout(safety); stopVu(); if (ttsSource === source) ttsSource = null; resolve(); };
@@ -5268,7 +5288,10 @@ function makeMessage(rowData){
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
-  let _inner = "";
+  const voiceIcon = m.voice || (m.meta && m.meta.voice)
+    ? '<span class="voice-call-icon" aria-label="Voice call" title="Voice call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v2.4a2 2 0 0 1-2.2 2 19.4 19.4 0 0 1-8.4-3 19 19 0 0 1-5.9-5.9 19.4 19.4 0 0 1-3-8.4A2 2 0 0 1 4.5 2h2.4a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.4a15.6 15.6 0 0 0 6.6 6.6l1-1a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 1.8z"/></svg></span>'
+    : "";
+  let _inner = voiceIcon;
   if (atts.length) _inner += renderAttachments(atts);
   const voiceSegments = m.from === "ai" && m.status !== "streaming" ? parseAssistantVoiceSegments(m.text) : [];
   if (m.text) _inner += `<span class="txt">${voiceSegments.length ? voiceMessageHtml(m.text, voiceSegments) : renderText(m.text)}</span>`;
@@ -5276,10 +5299,7 @@ function makeMessage(rowData){
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
   const metaEl = bubble.querySelector(".meta");
-  const voiceIcon = m.voice || (m.meta && m.meta.voice)
-    ? '<span class="voice-call-icon" aria-label="Voice call" title="Voice call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v2.4a2 2 0 0 1-2.2 2 19.4 19.4 0 0 1-8.4-3 19 19 0 0 1-5.9-5.9 19.4 19.4 0 0 1-3-8.4A2 2 0 0 1 4.5 2h2.4a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.4a15.6 15.6 0 0 0 6.6 6.6l1-1a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 1.8z"/></svg></span>'
-    : "";
-  if (m.status === "sending") metaEl.innerHTML = `${voiceIcon}<span>${fmtTime(m.ts)}</span>` + sendingTickHtml();
+  if (m.status === "sending") metaEl.innerHTML = `<span>${fmtTime(m.ts)}</span>` + sendingTickHtml();
   else if (m.status === "failed"){
     metaEl.innerHTML = `<span class="fail">未送达 · 重试</span>`;
     const fail = metaEl.querySelector(".fail");
@@ -5289,10 +5309,7 @@ function makeMessage(rowData){
       inputEl.dispatchEvent(new Event("input"));
       doSend();
     });
-  }else{
-    fillMeta(metaEl, m.ts, m.from === "human");
-    if (voiceIcon) metaEl.insertAdjacentHTML("afterbegin", voiceIcon);
-  }
+  }else fillMeta(metaEl, m.ts, m.from === "human");
   row.appendChild(bubble);
   if (voiceSegments.length){
     const joinedVoiceText = voiceSegments.map(segment => segment.content).join(" ");
