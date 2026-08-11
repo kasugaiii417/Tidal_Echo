@@ -951,6 +951,30 @@
     font:11px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     color:var(--text-faint);
   }
+  .tool-raw-url{
+    margin:6px 0 2px;
+    border-top:1px dashed var(--field-line);
+    padding-top:6px;
+  }
+  .tool-raw-url summary{
+    list-style:none;
+    cursor:pointer;
+    color:var(--text-faint);
+    font-size:11px;
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+  }
+  .tool-raw-url summary::-webkit-details-marker{ display:none; }
+  .tool-raw-url summary::before{
+    content:"▸";
+    font-size:9px;
+    transition:transform .15s ease;
+    transform:translateY(-1px);
+  }
+  .tool-raw-url[open] summary::before{ transform:rotate(90deg) translateY(-1px); }
+  .tool-raw-url summary:hover{ color:var(--text-soft); }
+  .tool-raw-url .tool-req-val{ margin-top:6px; }
   .tool-card.error{ border-color:rgba(192,83,63,.35); }
 
 
@@ -4943,49 +4967,107 @@ function makeAct(rowData){
   row.appendChild(block);
   return row;
 }
+function toolContentFromUrl(rawUrl){
+  if (!rawUrl) return null;
+  const str = String(rawUrl);
+  const qIndex = str.indexOf("?");
+  if (qIndex < 0) return null;
+  const path = str.slice(0, qIndex);
+  let params;
+  try{
+    params = new URL(str).searchParams;
+  }catch(_){
+    params = new URLSearchParams(str.slice(qIndex + 1));
+  }
+  if (!params || ![...params.keys()].length) return null;
+  let title = params.get("title");
+  let content = params.get("content");
+  if (content == null && /write[-_]?long/i.test(path)){
+    // write-long 类端点:正文按 c1..c30 顺序拼接
+    const chunks = [];
+    for (let i = 1; i <= 30; i++){
+      const v = params.get("c" + i);
+      if (v == null) break;
+      chunks.push(v);
+    }
+    if (chunks.length) content = chunks.join("");
+  }
+  if (title == null && content == null) return null;
+  return { title:decodeToolDisplayText(title), content:decodeToolDisplayText(content) };
+}
+function decodeToolDisplayText(value){
+  let decoded = String(value == null ? "" : value);
+  for (let pass = 0; pass < 3; pass++){
+    let next;
+    try{
+      next = decodeURIComponent(decoded);
+    }catch(_){
+      next = decoded.replace(/(?:%[0-9a-fA-F]{2})+/g, encoded => {
+        try{ return decodeURIComponent(encoded); }catch(_){ return encoded; }
+      });
+    }
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
 function toolRequestHtml(meta){
   const input = meta.tool_input || {};
-  const keys = Object.keys(input);
   const parts = [];
+  const keys = Object.keys(input);
   const method = String(input.method || meta.method || "").toUpperCase();
+  const rawUrl = String(meta.url || input.url || "");
   if (input.title != null){
-    parts.push(`<div class="tool-req-title">📄 ${escapeHtml(String(input.title))}</div>`);
+    parts.push(`<div class="tool-req-title">📄 ${escapeHtml(decodeToolDisplayText(input.title))}</div>`);
   }
   if (method && method !== "GET"){
     parts.push(`<div class="tool-req-line"><span class="tool-req-key">method</span><pre class="tool-req-val">${escapeHtml(method)}</pre></div>`);
   }
   // 写入内容优先展示——这才是 Hannes 真正写进目标软件的文字/JSON
   if (input.body != null && String(input.body) !== ""){
-    parts.push(`<div class="tool-req-line"><span class="tool-req-key">📝 写入内容 · written content</span><pre class="tool-req-val">${escapeHtml(String(input.body))}</pre></div>`);
+    parts.push(`<div class="tool-req-line"><span class="tool-req-key">📝 写入内容 · written content</span><pre class="tool-req-val">${escapeHtml(decodeToolDisplayText(input.body))}</pre></div>`);
   }
-  if (!keys.length){
-    if (meta.url){
-      parts.push(`<div class="tool-req-line"><span class="tool-req-key">url</span><pre class="tool-req-val">${escapeHtml(String(meta.url))}</pre></div>`);
-    }else{
-      parts.push(`<div class="tool-req-note">(no parameters)</div>`);
+  if (input.content != null && String(input.content) !== ""){
+    parts.push(`<div class="tool-req-line"><span class="tool-req-key">content</span><pre class="tool-req-val">${escapeHtml(decodeToolDisplayText(input.content))}</pre></div>`);
+  }
+  // 从请求 URL 解码的可读内容/标题(例如 write-long 端点的 c1..c30 分块)
+  const urlInfo = toolContentFromUrl(rawUrl);
+  if (urlInfo){
+    if (input.content == null && urlInfo.content != null && urlInfo.content !== ""){
+      parts.push(`<div class="tool-req-line"><span class="tool-req-key">content</span><pre class="tool-req-val">${escapeHtml(String(urlInfo.content))}</pre></div>`);
     }
-  }else{
-    keys.forEach((k) => {
-      if (k === "title" || k === "method" || k === "body") return;
-      let val;
-      try{
-        val = typeof input[k] === "string" ? escapeHtml(input[k]) : escapeHtml(JSON.stringify(input[k], null, 2));
-      }catch(_){ val = escapeHtml(String(input[k])); }
-      parts.push(`<div class="tool-req-line"><span class="tool-req-key">${escapeHtml(k)}</span><pre class="tool-req-val">${val}</pre></div>`);
-    });
+    if (input.title == null && urlInfo.title != null && urlInfo.title !== ""){
+      parts.push(`<div class="tool-req-line"><span class="tool-req-key">title</span><pre class="tool-req-val">${escapeHtml(String(urlInfo.title))}</pre></div>`);
+    }
   }
+  // URL 默认折叠；仅显示解码后的可读版本，不改变实际请求值。
+  if (rawUrl){
+    parts.push(`<details class="tool-raw-url"${urlInfo ? "" : " open"}><summary><span class="tool-req-key">🔗 URL</span></summary><pre class="tool-req-val">${escapeHtml(decodeToolDisplayText(rawUrl))}</pre></details>`);
+  }
+  // 其余参数(不重复列出 url/title/method/body)
+  keys.forEach((k) => {
+    if (k === "url" || k === "title" || k === "content" || k === "method" || k === "body") return;
+    let val;
+    try{
+      val = typeof input[k] === "string" ? escapeHtml(decodeToolDisplayText(input[k])) : escapeHtml(decodeToolDisplayText(JSON.stringify(input[k], null, 2)));
+    }catch(_){ val = escapeHtml(String(input[k])); }
+    parts.push(`<div class="tool-req-line"><span class="tool-req-key">${escapeHtml(k)}</span><pre class="tool-req-val">${val}</pre></div>`);
+  });
+  if (!parts.length) parts.push(`<div class="tool-req-note">(no parameters)</div>`);
   return parts.join("");
 }
 function makeToolCard(rowData){
   const m = rowData.message;
   const meta = m.meta || {};
   const result = String(meta.result == null ? "" : meta.result);
+  const displayResult = decodeToolDisplayText(result);
+  const displayUrl = decodeToolDisplayText(meta.url || "");
   const input = meta.tool_input || {};
   const method = String(input.method || "").toUpperCase();
   const bodyText = input.body != null ? String(input.body).replace(/\s+/g, " ").trim() : "";
   const preview = bodyText
     ? `📝 ${bodyText.slice(0, 80)}`
-    : (result.replace(/\s+/g, " ").trim().slice(0, 80) || (meta.error ? "Tool request failed" : "No content"));
+    : (displayResult.replace(/\s+/g, " ").trim().slice(0, 80) || (meta.error ? "Tool request failed" : "No content"));
   const showRequest = meta.tool_name || Object.keys(input).length || meta.url;
   const methodBadge = method && method !== "GET" ? `<span class="tool-method">${escapeHtml(method)}</span>` : "";
   const reqHtml = toolRequestHtml(meta);
@@ -4995,9 +5077,9 @@ function makeToolCard(rowData){
   row.dataset.from = "ai";
   row.dataset.messageKey = m._key;
   row.innerHTML = `<details class="tool-card${meta.error ? " error" : ""}">
-    <summary><span class="tool-icon" aria-hidden="true">🔗</span><span class="tool-name">${escapeHtml(meta.tool_name || "fetch")}</span>${methodBadge}<span class="tool-url" title="${escapeHtml(meta.url || "")}">${escapeHtml(meta.url || "")}</span><span class="tool-preview">${escapeHtml(preview)}${result.replace(/\s+/g, " ").trim().length > 80 ? "…" : ""}</span></summary>
+    <summary><span class="tool-icon" aria-hidden="true">🔗</span><span class="tool-name">${escapeHtml(meta.tool_name || "fetch")}</span>${methodBadge}<span class="tool-url" title="${escapeHtml(displayUrl)}">${escapeHtml(displayUrl)}</span><span class="tool-preview">${escapeHtml(preview)}${displayResult.replace(/\s+/g, " ").trim().length > 80 ? "…" : ""}</span></summary>
     ${showRequest ? `<details class="tool-request" open><summary><span class="tool-req-label">Request · 请求参数</span></summary><div class="tool-request-body">${reqHtml}</div></details>` : ""}
-    <pre class="tool-result">${escapeHtml(result)}</pre>
+    <pre class="tool-result">${escapeHtml(displayResult)}</pre>
   </details>`;
   row.querySelectorAll("details").forEach(d => d.addEventListener("toggle", () => measureVisibleRows({ stickToBottom:nearBottom() })));
   return row;
@@ -7155,6 +7237,19 @@ async function requestGateway(messages, systemContent, signal){
   }
   return response;
 }
+function parseFetchJsonText(text){
+  const raw = String(text == null ? "" : text).replace(/^\uFEFF/, "");
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try{ return JSON.parse(trimmed); }catch(_){ }
+  const decoded = decodeToolDisplayText(trimmed);
+  if (decoded !== trimmed){
+    try{ return JSON.parse(decoded); }catch(_){ }
+  }
+  // Some Workers intentionally return useful text with text/plain even when
+  // called through fetch_json. Treat that body as a successful tool result.
+  return decoded;
+}
 async function executeFetchTool(toolUse, signal){
   const input = toolUse.input || {};
   const name = String(toolUse.name || "");
@@ -7189,7 +7284,8 @@ async function executeFetchTool(toolUse, signal){
       });
     }
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
-    const value = name === "fetch_json" ? await response.json() : await response.text();
+    const responseText = await response.text();
+    const value = name === "fetch_json" ? parseFetchJsonText(responseText) : responseText;
     const result = typeof value === "string" ? value : JSON.stringify(value, null, 2);
     return { toolUse, url:targetUrl, method, input, result, error:false };
   }catch(error){
