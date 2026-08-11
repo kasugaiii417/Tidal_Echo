@@ -501,8 +501,9 @@
     color:#fff;
     font-size:.82em;
     line-height:1;
-    filter:grayscale(1) brightness(2);
+    vertical-align:-0.12em;
   }
+  .voice-call-icon svg{ width:1em; height:1em; display:block; }
   .row.grouped{ margin-top: clamp(4px, 0.8vw, 8px); }
   .row.human{ justify-content: flex-end; padding-right: calc(var(--avatar-size) + clamp(10px, 1.6vw, 16px)); }
   .row.ai{ justify-content: flex-start; padding-left: calc(var(--avatar-size) + clamp(10px, 1.6vw, 16px)); }
@@ -1850,6 +1851,7 @@
     display: flex; flex-direction: column; align-items: center;
     gap: 10px;
     flex-shrink: 0;
+    margin-top: auto;
   }
   .call-transcript-label{
     position: relative;
@@ -2094,11 +2096,11 @@
   }
   .incoming-call-actions{
     display: flex; align-items: center; justify-content: center;
-    gap: clamp(18px, 6vw, 34px);
+    gap: clamp(82px, 28vw, 142px);
     width: 100%;
   }
   .incoming-call-btn{
-    width: clamp(62px, 15.5vw, 74px); height: clamp(62px, 15.5vw, 74px);
+    width: clamp(72px, 18vw, 86px); height: clamp(72px, 18vw, 86px);
     border: 0; border-radius: 50%; padding: 0; cursor: pointer;
     color: #fff;
     display: grid; place-items: center;
@@ -2106,7 +2108,7 @@
   }
   .incoming-call-btn:hover{ filter: brightness(1.05); }
   .incoming-call-btn:active{ transform: scale(.92); }
-  .incoming-call-btn svg{ width: clamp(26px, 6vw, 30px); height: clamp(26px, 6vw, 30px); display: block; }
+  .incoming-call-btn svg{ width: clamp(30px, 7vw, 35px); height: clamp(30px, 7vw, 35px); display: block; }
   .incoming-call-btn.accept{
     background: #5aa77a;
     box-shadow: 0 10px 26px rgba(69,132,96,.34);
@@ -2656,13 +2658,11 @@
         <button class="incoming-call-btn decline" id="incomingCallDecline" type="button" aria-label="拒绝">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.996.996 0 0 0-1.01.24l-1.57 1.97a15.045 15.045 0 0 1-6.59-6.59l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg>
         </button>
-        <span class="incoming-call-label">拒绝</span>
       </div>
       <div class="incoming-call-slot">
         <button class="incoming-call-btn accept" id="incomingCallAccept" type="button" aria-label="接听">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.24.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
         </button>
-        <span class="incoming-call-label">接听</span>
       </div>
     </div>
   </div>
@@ -2932,7 +2932,7 @@ function applyIdentity(){
   const emp = document.querySelector("#empty p"); if (emp) emp.innerHTML = "这里只有你和" + AI_NAME + "。<br>说点什么吧。";
   setText(".call-name", AI_NAME);
   setAttr("#callAvatarImg", "aria-label", AI_NAME);
-  setText(".incoming-call-title", AI_NAME + "来电");
+  setText(".incoming-call-title", AI_NAME);
   setText("#incomingCallText", "Incoming call...");
   setAttr(".incoming-call-avatar", "aria-label", AI_NAME);
   setText(".menu-title", APP_NAME);
@@ -3578,7 +3578,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     recognition.onstart = () => {
       if (!open) return;
       setCaption("listening");
-      setTranscript("我在听。你可以直接说。", true);
+      setTranscript("speak to me.", true);
     };
     recognition.onresult = (event) => {
       let interim = "";
@@ -3659,7 +3659,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
 
   async function startVoiceInput(){
     setCaption("listening");
-    setTranscript("正在连接麦克风…", true);
+    setTranscript("speak to me.", true);
     if (!SpeechRecognition){
       setCaption("unavailable");
       setTranscript("This browser does not support speech recognition.", false);
@@ -5255,8 +5255,10 @@ function makeMessage(rowData){
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
   const metaEl = bubble.querySelector(".meta");
-  const voiceIcon = m.voice || (m.meta && m.meta.voice) ? '<span class="voice-call-icon" aria-label="Voice call" title="Voice call">📞</span>' : "";
-  if (m.status === "sending") metaEl.innerHTML = `<span>${fmtTime(m.ts)}</span>${voiceIcon}` + sendingTickHtml();
+  const voiceIcon = m.voice || (m.meta && m.meta.voice)
+    ? '<span class="voice-call-icon" aria-label="Voice call" title="Voice call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v2.4a2 2 0 0 1-2.2 2 19.4 19.4 0 0 1-8.4-3 19 19 0 0 1-5.9-5.9 19.4 19.4 0 0 1-3-8.4A2 2 0 0 1 4.5 2h2.4a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.4a15.6 15.6 0 0 0 6.6 6.6l1-1a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 1.8z"/></svg></span>'
+    : "";
+  if (m.status === "sending") metaEl.innerHTML = `${voiceIcon}<span>${fmtTime(m.ts)}</span>` + sendingTickHtml();
   else if (m.status === "failed"){
     metaEl.innerHTML = `<span class="fail">未送达 · 重试</span>`;
     const fail = metaEl.querySelector(".fail");
@@ -5268,7 +5270,7 @@ function makeMessage(rowData){
     });
   }else{
     fillMeta(metaEl, m.ts, m.from === "human");
-    if (voiceIcon) metaEl.insertAdjacentHTML("beforeend", voiceIcon);
+    if (voiceIcon) metaEl.insertAdjacentHTML("afterbegin", voiceIcon);
   }
   row.appendChild(bubble);
   if (voiceSegments.length){
