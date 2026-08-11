@@ -3207,7 +3207,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let secs = 0, tickId = null, hideId = null, rafId = null;
   let waveBuilt = false;
   let bars = [];
-  let recognition = null, recognitionWanted = false, recognitionFinal = "";
+  let recognition = null, recognitionWanted = false, recognitionFinal = "", recognitionInterim = "";
+  let recognitionSilenceTimer = null;
   let mediaStream = null, mediaRecorder = null;
   let audioCtx = null, analyser = null, freqData = null;
   let speakingUtterance = null;
@@ -3418,10 +3419,41 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
 
   function stopRecognition(){
     recognitionWanted = false;
+    if (recognitionSilenceTimer){ clearTimeout(recognitionSilenceTimer); recognitionSilenceTimer = null; }
     if (recognition){
       try{ recognition.onend = null; recognition.abort(); }catch(e){}
       recognition = null;
     }
+    recognitionFinal = "";
+    recognitionInterim = "";
+  }
+
+  function finishRecognitionAfterSilence(){
+    recognitionSilenceTimer = null;
+    if (!open || muted || callTurnBusy) return;
+    const finalText = [recognitionFinal, recognitionInterim].filter(Boolean).join(" ").trim();
+    recognitionWanted = false;
+    const activeRecognition = recognition;
+    recognition = null;
+    if (activeRecognition){
+      activeRecognition.onend = null;
+      activeRecognition.onresult = null;
+      try{ activeRecognition.stop(); }catch(e){}
+    }
+    recognitionFinal = "";
+    recognitionInterim = "";
+    if (finalText){
+      setCaption("thinking");
+      setTranscript("thinking...", true);
+      void sendVoiceText(finalText, "browser_speech");
+    }else if (open && !muted){
+      startRecognition();
+    }
+  }
+
+  function resetRecognitionSilenceTimer(){
+    if (recognitionSilenceTimer) clearTimeout(recognitionSilenceTimer);
+    recognitionSilenceTimer = setTimeout(finishRecognitionAfterSilence, 3000);
   }
 
   function clearSpeechPlayback(){
@@ -3474,7 +3506,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     rememberPendingOutgoing(tempKey, clean, optimisticTs);
     scheduleRender({ stickToBottom:true });
     setCaption("thinking");
-    setTranscript("你: " + clean, false);
+    setTranscript("thinking...", true);
     setQuote(HINT_THINKING, { hint:true, dots:true });
     callTurnController = new AbortController();
     try{
@@ -3525,6 +3557,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     stopRecognition();
     recognitionWanted = true;
     recognitionFinal = "";
+    recognitionInterim = "";
     recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.continuous = true;
@@ -3543,8 +3576,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
         if (event.results[i].isFinal) recognitionFinal += (recognitionFinal ? " " : "") + piece;
         else interim += piece;
       }
-      const heard = [recognitionFinal, interim].filter(Boolean).join(" ");
-      if (heard){ setTranscript("你: " + heard, true); pulseVu(0.5 + Math.random() * 0.45); }
+      recognitionInterim = interim;
+      const heard = [recognitionFinal, recognitionInterim].filter(Boolean).join(" ");
+      resetRecognitionSilenceTimer();
+      if (heard){
+        setTranscript("你: " + heard, true);
+        pulseVu(0.5 + Math.random() * 0.45);
+      }
     };
     recognition.onerror = (event) => {
       if (!open) return;
@@ -3555,11 +3593,9 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     recognition.onend = () => {
       recognition = null;
       if (!open || !recognitionWanted || muted || callTurnBusy) return;
-      recognitionWanted = false;
-      const finalText = recognitionFinal.trim();
-      recognitionFinal = "";
-      if (finalText) void sendVoiceText(finalText, "browser_speech");
-      else startRecognition();
+      // iOS continuous recognition may end unexpectedly. A pending silence timer
+      // owns transcript submission; with no captured speech, simply resume listening.
+      if (!recognitionSilenceTimer) startRecognition();
     };
     try{
       recognition.start();
