@@ -148,20 +148,9 @@
   }
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html{
-    background-color:var(--bg);
-    background-image:var(--wall-default);
-    background-size:cover;
-    background-position:center;
-    background-repeat:no-repeat;
-  }
   html, body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
   body{ position: fixed; inset: 0; width: 100%;
-    background-color: var(--bg);
-    background-image: var(--wall-default);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background: var(--bg);
     color: var(--text);
     font-family: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
     font-size: clamp(15px, 1.55vw, 17px);
@@ -186,12 +175,9 @@
   }
   .wall{
     position:fixed;
-    top:calc(-1 * env(safe-area-inset-top));
-    right:0;
-    bottom:0;
-    left:0;
+    inset:0;
     width:100vw;
-    height:calc(var(--screen-height) + env(safe-area-inset-top));
+    height:var(--screen-height);
     z-index:0;
     background-color: var(--bg);
     background-image: var(--wall-default);
@@ -242,7 +228,13 @@
     margin-top: 4px;
     letter-spacing: 0;
   }
+  .peerpill .status.dynamic-status{ font-size:clamp(11px, 1.6vw, 14px); }
   .peerpill .status .status-cn{ font-size:.84em; }
+  .peerpill .status.available{ display:inline-flex; align-items:center; gap:6px; }
+  .peerpill .status.available::before{
+    content:""; width:6px; height:6px; flex:none; border-radius:50%;
+    background:#809b8b; box-shadow:0 0 0 2px rgba(128,155,139,.13);
+  }
   .app[data-conn="reconnecting"] .peerpill .status{ color:#9a8061; }
   .peerpill .status.typing{
     color: #4f9fda;
@@ -1671,6 +1663,14 @@
     -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
   }
   .memory-section-title{ margin:0 0 11px; font-size:13px; color:var(--text-soft); font-weight:600; letter-spacing:.02em; }
+  .memory-transfer-actions{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:18px; }
+  .memory-transfer-btn{
+    border:1px solid var(--hairline); border-radius:13px; padding:10px 12px;
+    color:var(--text-soft); background:var(--card-bg); box-shadow:var(--card-shadow);
+    font:500 13px/1.2 var(--font-en),var(--font-cn); cursor:pointer;
+    -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  }
+  .memory-transfer-btn:active{ transform:scale(.985); background:var(--row-press); }
   .memory-textarea{
     display:block; width:100%; min-height:150px; resize:vertical; border:1px solid var(--field-line);
     border-radius:13px; padding:11px 12px; color:var(--text); background:var(--field-bg);
@@ -2607,6 +2607,11 @@
       </button>
     </header>
     <div class="memory-scroll">
+      <div class="memory-transfer-actions">
+        <button class="memory-transfer-btn" id="memoryExport" type="button">Export backup</button>
+        <button class="memory-transfer-btn" id="memoryImport" type="button">Import backup</button>
+        <input class="hidden" id="memoryImportInput" type="file" accept="application/json,.json">
+      </div>
       <section class="memory-section">
         <h3 class="memory-section-title">System Prompt</h3>
         <textarea class="memory-textarea" id="systemPromptInput" placeholder="Write the system prompt here…"></textarea>
@@ -2851,6 +2856,7 @@ const memoryPanel = $("#memoryPanel"), memoryBack = $("#memoryBack"), memoryAdd 
 const systemPromptInput = $("#systemPromptInput"), systemPromptHint = $("#systemPromptHint");
 const memoryNewEditor = $("#memoryNewEditor"), memoryNewContent = $("#memoryNewContent");
 const memoryNewCancel = $("#memoryNewCancel"), memoryNewSave = $("#memoryNewSave");
+const memoryExport = $("#memoryExport"), memoryImport = $("#memoryImport"), memoryImportInput = $("#memoryImportInput");
 
 /* ════════ 固定聊天背景 + 本地头像 ════════ */
 const THEMES = ["light","harbor"];
@@ -2888,17 +2894,7 @@ function sampleImageBand(img, yStart, ySize){
 function applyWall(url){
   const image = `url("${url}")`;
   wallEl.style.backgroundImage = image;
-
-  // iOS Home Screen paints status/home areas from host chrome. Keep root paint
-  // close to the fixed wallpaper, while leaving the real layout viewport alone.
   var de = document.documentElement, bd = document.body;
-  [de, bd].forEach((el) => {
-    if (!el) return;
-    el.style.setProperty("background-image", image, "important");
-    el.style.setProperty("background-size", "cover", "important");
-    el.style.setProperty("background-position", "center", "important");
-    el.style.setProperty("background-repeat", "no-repeat", "important");
-  });
 
   var img = new Image();
   img.onload = function(){
@@ -4328,6 +4324,7 @@ if (brainSeg) brainSeg.addEventListener("click", () => setBrainUi());
 function renderStatus(){
   const connLabel = { online:"online", reconnecting:"connecting…", offline:"offline" }[appEl.dataset.conn] || "";
   if (typingActive){
+    statusEl.classList.remove("available", "dynamic-status");
     if (!statusEl.classList.contains("typing")){   // 仅在进入 typing 时写一次,避免重启点动画
       statusEl.innerHTML = 'typing<span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
       statusEl.classList.add("typing");
@@ -4337,6 +4334,7 @@ function renderStatus(){
       ? assistantStatus
       : "";
     const label = appEl.dataset.conn === "online" && currentAssistantStatus ? currentAssistantStatus : connLabel;
+    const isAvailable = appEl.dataset.conn === "online";
     statusEl.replaceChildren();
     if (currentAssistantStatus && label === currentAssistantStatus){
       const pipeAt = label.indexOf("|");
@@ -4356,6 +4354,8 @@ function renderStatus(){
       }else statusEl.textContent = label;
     }else statusEl.textContent = label;
     statusEl.classList.remove("typing");
+    statusEl.classList.toggle("available", isAvailable);
+    statusEl.classList.toggle("dynamic-status", isAvailable && !!currentAssistantStatus);
   }
 }
 function scheduleAssistantStatusExpiry(){
@@ -6899,6 +6899,44 @@ function saveMemories(rows){
   localStorage.setItem(MEMORIES_KEY, JSON.stringify(clean));
   return clean;
 }
+function exportMemoryBackup(){
+  if (systemPromptInput) saveSystemPrompt(systemPromptInput.value);
+  const payload = {
+    format:"tidal-echo-memory",
+    version:1,
+    exportedAt:new Date().toISOString(),
+    system_prompt:loadSystemPrompt(),
+    memories:loadMemories()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:"application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `tidal-echo-memory-${new Date().toLocaleDateString("en-CA")}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  showToast(`Exported ${payload.memories.length} memories`);
+}
+async function importMemoryBackup(file){
+  const parsed = JSON.parse(await file.text());
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid backup file");
+  const hasPrompt = Object.prototype.hasOwnProperty.call(parsed, "system_prompt") || Object.prototype.hasOwnProperty.call(parsed, "systemPrompt");
+  const hasMemories = Object.prototype.hasOwnProperty.call(parsed, "memories");
+  if (!hasPrompt && !hasMemories) throw new Error("No system_prompt or memories found");
+  if (hasMemories && !Array.isArray(parsed.memories)) throw new Error("memories must be an array");
+  const prompt = hasPrompt ? String(parsed.system_prompt ?? parsed.systemPrompt ?? "") : loadSystemPrompt();
+  const rows = hasMemories ? parsed.memories : loadMemories();
+  const cleanRows = (rows || []).map(row => ({ id:Number(row && row.id), content:String((row && row.content) || "") }))
+    .filter(row => Number.isInteger(row.id) && row.id > 0 && row.content.trim());
+  if (!window.confirm(`Import this backup?\n\nSystem prompt: ${prompt ? "included" : "empty"}\nMemories: ${cleanRows.length}\n\nThis replaces the current prompt and memories.`)) return;
+  saveSystemPrompt(prompt);
+  saveMemories(cleanRows);
+  expandedMemoryIds.clear();
+  renderMemoryPage();
+  showToast("Memory backup imported");
+}
 function nextMemoryId(rows = loadMemories()){
   const used = new Set(rows.map(row => row.id));
   let id = 1;
@@ -7021,6 +7059,18 @@ if (systemPromptInput) systemPromptInput.addEventListener("input", () => {
     systemPromptHint.textContent = "Saved";
     clearTimeout(systemPromptHintTimer);
     systemPromptHintTimer = setTimeout(() => { systemPromptHint.textContent = ""; }, 1200);
+  }
+});
+if (memoryExport) memoryExport.addEventListener("click", exportMemoryBackup);
+if (memoryImport) memoryImport.addEventListener("click", () => memoryImportInput && memoryImportInput.click());
+if (memoryImportInput) memoryImportInput.addEventListener("change", async () => {
+  const file = memoryImportInput.files && memoryImportInput.files[0];
+  memoryImportInput.value = "";
+  if (!file) return;
+  try{ await importMemoryBackup(file); }
+  catch(error){
+    console.error("Memory backup import failed:", error);
+    alert("导入失败：" + (error.message || error));
   }
 });
 if (memoryAdd) memoryAdd.addEventListener("click", () => {
