@@ -493,6 +493,16 @@
     height:1px;
     background: var(--hairline);
   }
+  .call-divider{ color:var(--text-soft); }
+  .voice-call-icon{
+    display:inline-flex;
+    align-items:center;
+    margin-left:5px;
+    color:#fff;
+    font-size:.82em;
+    line-height:1;
+    filter:grayscale(1) brightness(2);
+  }
   .row.grouped{ margin-top: clamp(4px, 0.8vw, 8px); }
   .row.human{ justify-content: flex-end; padding-right: calc(var(--avatar-size) + clamp(10px, 1.6vw, 16px)); }
   .row.ai{ justify-content: flex-start; padding-left: calc(var(--avatar-size) + clamp(10px, 1.6vw, 16px)); }
@@ -2605,21 +2615,8 @@
       <div class="call-vu call-vu-right" id="callVuRight" aria-hidden="true"></div>
     </div>
     <div class="call-name">Hannes</div>
-    <div class="call-status">
-      <span class="call-star"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c.8 5 3.5 7.7 8.5 8.5-5 .8-7.7 3.5-8.5 8.5-.8-5-3.5-7.7-8.5-8.5 5-.8 7.7-3.5 8.5-8.5Z"/></svg></span>
-      <span id="callCaptionText">on call</span>
-      <span class="call-star"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c.8 5 3.5 7.7 8.5 8.5-5 .8-7.7 3.5-8.5 8.5-.8-5-3.5-7.7-8.5-8.5 5-.8 7.7-3.5 8.5-8.5Z"/></svg></span>
-    </div>
     <div class="call-timer" id="callTimer">00:00</div>
-    <div class="call-quote" id="callQuote">
-      <span class="call-quote-mark">“</span>
-      <span class="call-quote-text" id="callQuoteText"></span>
-      <span class="call-quote-mark">”</span>
-    </div>
     <div class="call-transcript-section">
-      <div class="call-transcript-label">
-        <span class="call-transcript-cap">实时字幕 · live transcript</span>
-      </div>
       <div class="call-transcript-bar" id="callTranscript" aria-live="polite"></div>
     </div>
     <div class="call-controls">
@@ -2652,8 +2649,8 @@
       <span class="call-star"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c.8 5 3.5 7.7 8.5 8.5-5 .8-7.7 3.5-8.5 8.5-.8-5-3.5-7.7-8.5-8.5 5-.8 7.7-3.5 8.5-8.5Z"/></svg></span>
     </div>
     <div class="incoming-call-avatar" role="img" aria-label="Hannes"></div>
-    <div class="incoming-call-title">Hannes来电</div>
-    <div class="incoming-call-text" id="incomingCallText">Hannes想和你语音通话。</div>
+    <div class="incoming-call-title">Hannes</div>
+    <div class="incoming-call-text" id="incomingCallText">Incoming call...</div>
     <div class="incoming-call-actions">
       <div class="incoming-call-slot">
         <button class="incoming-call-btn decline" id="incomingCallDecline" type="button" aria-label="拒绝">
@@ -2936,7 +2933,7 @@ function applyIdentity(){
   setText(".call-name", AI_NAME);
   setAttr("#callAvatarImg", "aria-label", AI_NAME);
   setText(".incoming-call-title", AI_NAME + "来电");
-  setText("#incomingCallText", AI_NAME + "想和你语音通话。");
+  setText("#incomingCallText", "Incoming call...");
   setAttr(".incoming-call-avatar", "aria-label", AI_NAME);
   setText(".menu-title", APP_NAME);
   if (humanAvatarName) humanAvatarName.textContent = HUMAN_NAME;
@@ -3247,6 +3244,20 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r;
   }
 
+  function insertVoiceCallDivider(event){
+    const ts = new Date().toISOString();
+    setMessage({
+      id:localMessageId(),
+      ts,
+      from:"system",
+      kind:"call_event",
+      text:event === "started" ? "Voice Call Started" : "Voice Call Ended",
+      meta:{ call_event:event, call_id:callId },
+      status:"sent"
+    }, { render:false, cache:true });
+    scheduleRender({ stickToBottom:true });
+  }
+
   function setCaption(text){
     if (captionText) captionText.textContent = text;
   }
@@ -3310,8 +3321,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
 
   function showIncomingCall(text){
     if (open || !incomingOverlay) return;
-    pendingIncomingText = String(text || (AI_NAME + "想和你语音通话。")).trim() || (AI_NAME + "想和你语音通话。");
-    if (incomingTextEl) incomingTextEl.textContent = pendingIncomingText;
+    pendingIncomingText = String(text || "").trim();
+    if (incomingTextEl) incomingTextEl.textContent = "Incoming call...";
     incomingOpen = true;
     incomingOverlay.classList.remove("hidden");
     incomingOverlay.setAttribute("aria-hidden", "false");
@@ -3497,6 +3508,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       from:"human",
       kind:"user",
       text:clean,
+      voice:true,
       meta:{ ...(currentSid ? { api_session:currentSid } : {}), voice:true, call_id:callId },
       status:"sending"
     };
@@ -3701,6 +3713,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     hideIncomingCall();
     ensureTtsCtx();
     callId = "call-" + Date.now().toString(36);
+    insertVoiceCallDivider("started");
     buildVu();
     clearTimeout(hideId);
     overlay.classList.remove("hidden");
@@ -3729,6 +3742,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   function closeCall(){
     if (!open) return;
     const closingCallId = callId;
+    insertVoiceCallDivider("ended");
     open = false;
     minimized = false;
     privateMode = false;
@@ -4875,6 +4889,11 @@ function buildVirtualRows(){
       prevBubble = null;
       return;
     }
+    if (m.kind === "call_event"){
+      rows.push({ type:"call_event", key:`m:${m._key}`, message:m });
+      prevBubble = null;
+      return;
+    }
     if (m.kind === "act"){
       rows.push({ type:"act", key:`m:${m._key}`, message:m });
       prevBubble = null;                            // 像 thinking 一样打断气泡成组
@@ -4929,6 +4948,7 @@ function estimatedHeight(row){
   if (rowHeights.has(row.key)) return rowHeights.get(row.key);
   if (row.type === "day") return DEFAULT_DAY_HEIGHT;
   if (row.type === "new") return DEFAULT_NEW_HEIGHT;
+  if (row.type === "call_event") return DEFAULT_NEW_HEIGHT;
   if (row.type === "thinking") return DEFAULT_THINK_HEIGHT;
   if (row.type === "act") return DEFAULT_ACT_HEIGHT;
   if (row.type === "tool") return 82;
@@ -4988,6 +5008,14 @@ function makeNewDivider(){
   const d = document.createElement("div");
   d.className = "new-divider";
   d.textContent = "New Messages";
+  return d;
+}
+function makeCallDivider(rowData){
+  const m = rowData.message;
+  const d = document.createElement("div");
+  d.className = "new-divider call-divider";
+  d.dataset.messageKey = m._key;
+  d.textContent = `${m.text} · ${fmtTime(m.ts)}`;
   return d;
 }
 function makeThinking(rowData){
@@ -5227,7 +5255,8 @@ function makeMessage(rowData){
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
   const metaEl = bubble.querySelector(".meta");
-  if (m.status === "sending") metaEl.innerHTML = `<span>${fmtTime(m.ts)}</span>` + sendingTickHtml();
+  const voiceIcon = m.voice || (m.meta && m.meta.voice) ? '<span class="voice-call-icon" aria-label="Voice call" title="Voice call">📞</span>' : "";
+  if (m.status === "sending") metaEl.innerHTML = `<span>${fmtTime(m.ts)}</span>${voiceIcon}` + sendingTickHtml();
   else if (m.status === "failed"){
     metaEl.innerHTML = `<span class="fail">未送达 · 重试</span>`;
     const fail = metaEl.querySelector(".fail");
@@ -5237,7 +5266,10 @@ function makeMessage(rowData){
       inputEl.dispatchEvent(new Event("input"));
       doSend();
     });
-  }else fillMeta(metaEl, m.ts, m.from === "human");
+  }else{
+    fillMeta(metaEl, m.ts, m.from === "human");
+    if (voiceIcon) metaEl.insertAdjacentHTML("beforeend", voiceIcon);
+  }
   row.appendChild(bubble);
   if (voiceSegments.length){
     const joinedVoiceText = voiceSegments.map(segment => segment.content).join(" ");
@@ -5272,6 +5304,7 @@ function createVirtualNode(row){
   let el;
   if (row.type === "day") el = makeDay(row);
   else if (row.type === "new") el = makeNewDivider(row);
+  else if (row.type === "call_event") el = makeCallDivider(row);
   else if (row.type === "thinking") el = makeThinking(row);
   else if (row.type === "act") el = makeAct(row);
   else if (row.type === "tool") el = makeToolCard(row);
@@ -5310,7 +5343,7 @@ function virtualRowSignature(row){
     const _attSig = _atts.map((a) => `${a.kind || ""}:${a.url || a.localUrl || ""}:${a.uploading ? 1 : 0}:${a.failed ? 1 : 0}`).join(",");
     const _rxSig = (m.meta && m.meta.reactions) ? JSON.stringify(m.meta.reactions) : "";
     const _toolSig = m.kind === "tool" ? JSON.stringify(m.meta || {}) : "";
-    return [row.key, row.type, m.status || "", m.id, m.ts, m.text || "", _attSig, row.grouped ? 1 : 0, row.tail ? 1 : 0, openThinkKeys.has(m._key) ? 1 : 0, openActKeys.has(m._key) ? 1 : 0, _rxSig, _toolSig, m.meta && m.meta.usage_tokens, m.meta && m.meta.output_tokens, showOutputTokens ? 1 : 0].join("~");
+    return [row.key, row.type, m.status || "", m.id, m.ts, m.text || "", m.voice || (m.meta && m.meta.voice) ? 1 : 0, _attSig, row.grouped ? 1 : 0, row.tail ? 1 : 0, openThinkKeys.has(m._key) ? 1 : 0, openActKeys.has(m._key) ? 1 : 0, _rxSig, _toolSig, m.meta && m.meta.usage_tokens, m.meta && m.meta.output_tokens, showOutputTokens ? 1 : 0].join("~");
   }
   return row.key;
 }
@@ -5680,13 +5713,16 @@ function onMessage(m){
     applyReaction(m);
     return;
   }
-  if (m.from === "ai" && m.kind === "call"){
+  if (m.from === "ai" && (m.kind === "call" || /\[call\]/i.test(String(m.text || "")))){
     if (!msgInActiveSession(m)) return;
     const callStick = nearBottom();
-    if (window.VoiceCall) window.VoiceCall.incoming(m.text || (AI_NAME + "想和你语音通话。"));
-    setMessage({ ...m, status:"sent" }, { render:false });
-    scheduleRender({ stickToBottom: callStick });
-    if (!callStick) showNewMsgPill();
+    const visibleCallText = String(m.text || "").replace(/\[call\]/gi, "").trim();
+    if (window.VoiceCall) window.VoiceCall.incoming(visibleCallText);
+    if (visibleCallText){
+      setMessage({ ...m, kind:"reply", text:visibleCallText, status:"sent" }, { render:false });
+      scheduleRender({ stickToBottom: callStick });
+      if (!callStick) showNewMsgPill();
+    }
     return;
   }
   if (!msgInActiveSession(m)) return;
@@ -6680,6 +6716,18 @@ function interceptMemoryOperations(text){
 function hideMemoryOperationsWhileStreaming(text){
   return String(text || "").replace(/```memory_operation\s*[\s\S]*?(?:```|$)/gi, "").trimEnd();
 }
+function hideCallMarkersWhileStreaming(text){
+  return String(text || "")
+    .replace(/\[call\]/gi, "")
+    .replace(/\[(?:c(?:a(?:l(?:l)?)?)?)?$/i, "");
+}
+function interceptIncomingCallMarker(text){
+  const source = String(text || "");
+  if (!/\[call\]/i.test(source)) return source;
+  const visible = source.replace(/\[call\]/gi, "").replace(/[ \t]+\n/g, "\n").trim();
+  if (window.VoiceCall) window.VoiceCall.incoming(visible);
+  return visible;
+}
 function splitAssistantBubbleText(value){
   const lines = String(value || "").replace(/\r\n/g, "\n").split("\n");
   const chunks = [];
@@ -7132,7 +7180,8 @@ function gatewayLocalTime(ts){
 }
 function gatewayContentForMessage(m, includeTimestamp = false){
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
-  const prefix = includeTimestamp ? `${gatewayLocalTime(m.ts)} ` : "";
+  const voicePrefix = m.voice || (m.meta && m.meta.voice) ? "[voice call] " : "";
+  const prefix = voicePrefix + (includeTimestamp ? `${gatewayLocalTime(m.ts)} ` : "");
   if (!atts.length) return prefix + (m.text || "");
   const blocks = [];
   if (m.text || prefix) blocks.push({ type:"text", text:prefix + (m.text || "") });
@@ -7215,9 +7264,10 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
         from:"ai",
         kind:"reply",
         text:chunk,
+        voice:!!options.voice,
         meta:index === chunks.length - 1 && Number.isFinite(finalUsageTokens)
-          ? { usage_tokens:finalUsageTokens, input_tokens:uncachedInputTokens, output_tokens:outputTokens }
-          : {},
+          ? { usage_tokens:finalUsageTokens, input_tokens:uncachedInputTokens, output_tokens:outputTokens, ...(options.voice ? { voice:true } : {}) }
+          : (options.voice ? { voice:true } : {}),
         status
       }, { render:false, cache:false });
     });
@@ -7225,7 +7275,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
   };
   const paintStream = () => {
     streamPaintTimer = null;
-    const visible = hideAssistantVoiceWhileStreaming(hideMemoryOperationsWhileStreaming(text));
+    const visible = hideAssistantVoiceWhileStreaming(hideCallMarkersWhileStreaming(hideMemoryOperationsWhileStreaming(text)));
     const chunks = splitAssistantBubbleText(visible);
     reconcileStreamChunks(chunks, "streaming");
   };
@@ -7262,7 +7312,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
       if ((eventName === "content_block_delta" || ev.type === "content_block_delta") && ev.delta && ev.delta.type === "text_delta"){
         const deltaText = ev.delta.text || "";
         text += deltaText;
-        if (options.onText) options.onText(text, deltaText);
+        if (options.onText) options.onText(hideCallMarkersWhileStreaming(text), deltaText);
         const block = blocksByIndex.get(Number(ev.index));
         if (block && block.type === "text") block.text += deltaText;
         scheduleStreamPaint();
@@ -7289,7 +7339,6 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
     while (true){
       const { value, done } = await reader.read();
       const chunk = decoder.decode(value || new Uint8Array(), { stream:!done });
-      if (options.voice && chunk) alert(">>> SSE CHUNK: " + chunk);
       buffer += chunk;
       const lines = buffer.split(/\r?\n/); buffer = lines.pop() || "";
       for (const line of lines){
@@ -7316,7 +7365,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
     if (interrupted) return { text:"", contentBlocks:[], toolUses:[], stopReason, interrupted:true };
     throw new Error("Gateway returned no text");
   }
-  const visibleText = text ? interceptMemoryOperations(text) : "";
+  const visibleText = text ? interceptIncomingCallMarker(interceptMemoryOperations(text)) : "";
   const chunks = visibleText ? splitAssistantBubbleText(visibleText) : [];
   if (!chunks.length){
     streamChunkIds.forEach(id => removeMessage(id, { render:false, cache:false }));
@@ -7344,21 +7393,15 @@ async function requestGateway(messages, systemContent, signal, options = {}){
     ...(fetchToolsEnabled() ? { tools:TOOLS } : {})
   };
   try{
-    if (options.voice){
-      alert(">>> SENDING TO GATEWAY: " + String(options.transcript || ""));
-      alert(">>> GATEWAY URL: " + GATEWAY_URL);
-      alert(">>> REQUEST BODY: " + JSON.stringify(requestBody));
-    }
     response = await fetch(GATEWAY_URL, {
       method:"POST",
       headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"text/event-stream" },
       body:JSON.stringify(requestBody),
       signal
     });
-    if (options.voice) alert(">>> GATEWAY RESPONSE STATUS: " + response.status);
   }catch(e){
     if (signal && signal.aborted) throw e;
-    alert("FETCH ERROR: " + (e.message || JSON.stringify(e)));
+    alert("ERROR: " + (e.message || JSON.stringify(e)));
     document.title = "ERR: " + (e.message || e);
     throw e;
   }
@@ -7371,7 +7414,7 @@ async function requestGateway(messages, systemContent, signal, options = {}){
       body:errorText,
       headers:Object.fromEntries(response.headers.entries())
     });
-    alert("GATEWAY " + response.status + "\n\n" + errorText.slice(0, 2000));
+    alert("ERROR: GATEWAY " + response.status + "\n\n" + errorText.slice(0, 2000));
     throw new Error("gateway " + response.status + ": " + errorText);
   }
   return response;
@@ -7483,7 +7526,7 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
         throw error;
       }
       const streamed = await consumeAnthropicStream(response, localMessageId(), generationController.signal, options);
-      finalText = streamed.text || "";
+      finalText = String(streamed.text || "").replace(/\[call\]/gi, "").trim();
       if (streamed.interrupted || generationController.signal.aborted) return { id:humanId, aborted:true };
       if (!streamed.toolUses.length) break;
       outboundMessages.push({ role:"assistant", content:streamed.contentBlocks });
