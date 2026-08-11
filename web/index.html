@@ -3194,7 +3194,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   const callSpeakerBtn = $("#callSpeakerBtn");
 
   const VU_BARS = 16;   // 每侧声纹竖条数
-  const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev";
+  const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev?language=multi";
   const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
 
   let open = false;
@@ -3215,7 +3215,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let speakingUtterance = null;
   let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null;
   let speakSeq = 0;
-  let callId = "";
+  let callId = "", callStartedAt = 0;
   let callTurnBusy = false, callTurnController = null, ttsSource = null;
   let incomingOpen = false;
   let pendingIncomingText = "";
@@ -3257,6 +3257,30 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       kind:"call_event",
       text:event === "started" ? "Voice Call Started" : "Voice Call Ended",
       meta:{ call_event:event, call_id:callId },
+      status:"sent"
+    }, { render:false, cache:true });
+    scheduleRender({ stickToBottom:true });
+  }
+
+  function formatCallDuration(milliseconds){
+    const total = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const mmss = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    return hours > 0 ? `${String(hours).padStart(2, "0")}:${mmss}` : mmss;
+  }
+
+  function insertCallDurationMessage(endedAt){
+    const ts = new Date(endedAt).toISOString();
+    setMessage({
+      id:localMessageId(),
+      ts,
+      from:"human",
+      kind:"user",
+      text:`通话时长 ${formatCallDuration(endedAt - callStartedAt)}`,
+      voice:true,
+      meta:{ voice:true, call_id:callId, call_duration:true },
       status:"sent"
     }, { render:false, cache:true });
     scheduleRender({ stickToBottom:true });
@@ -3769,6 +3793,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     hideIncomingCall();
     ensureTtsCtx();
     callId = "call-" + Date.now().toString(36);
+    callStartedAt = Date.now();
     insertVoiceCallDivider("started");
     buildVu();
     clearTimeout(hideId);
@@ -3798,7 +3823,9 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   function closeCall(){
     if (!open) return;
     const closingCallId = callId;
+    const endedAt = Date.now();
     insertVoiceCallDivider("ended");
+    insertCallDurationMessage(endedAt);
     open = false;
     minimized = false;
     privateMode = false;
@@ -3826,6 +3853,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (ttsCtx){ try{ ttsCtx.close(); }catch(e){} ttsCtx = null; }
     applyConversationMode();
     apiCallEvent("end", { call_id: closingCallId }).catch(() => {});
+    callStartedAt = 0;
     clearTimeout(hideId);
     hideId = setTimeout(() => overlay.classList.add("hidden"), 380);
   }
