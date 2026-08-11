@@ -3194,7 +3194,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   const callSpeakerBtn = $("#callSpeakerBtn");
 
   const VU_BARS = 16;   // 每侧声纹竖条数
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev";
 
   let open = false;
   let minimized = false;
@@ -3204,9 +3204,10 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let secs = 0, tickId = null, hideId = null, rafId = null;
   let waveBuilt = false;
   let bars = [];
-  let recognition = null, recognitionWanted = false, recognitionFinal = "", recognitionInterim = "";
-  let recognitionSilenceTimer = null;
-  let mediaStream = null, mediaRecorder = null;
+  let deepgramSocket = null, deepgramWanted = false, deepgramFinal = "", deepgramInterim = "";
+  let deepgramSilenceTimer = null, deepgramReconnectTimer = null, deepgramGeneration = 0;
+  let sttAudioCtx = null, sttSource = null, sttProcessor = null, sttSilentGain = null;
+  let mediaStream = null;
   let audioCtx = null, analyser = null, freqData = null;
   let speakingUtterance = null;
   let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null;
@@ -3428,43 +3429,162 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     senseFrames = [];
   }
 
-  function stopRecognition(){
-    recognitionWanted = false;
-    if (recognitionSilenceTimer){ clearTimeout(recognitionSilenceTimer); recognitionSilenceTimer = null; }
-    if (recognition){
-      try{ recognition.onend = null; recognition.abort(); }catch(e){}
-      recognition = null;
+  function pcm16At16k(samples, inputRate){
+    const ratio = inputRate / 16000;
+    const length = Math.max(1, Math.floor(samples.length / ratio));
+    const pcm = new Int16Array(length);
+    for (let out = 0; out < length; out++){
+      const start = Math.floor(out * ratio);
+      const end = Math.max(start + 1, Math.min(samples.length, Math.floor((out + 1) * ratio)));
+      let sum = 0;
+      for (let i = start; i < end; i++) sum += samples[i];
+      const sample = Math.max(-1, Math.min(1, sum / (end - start)));
+      pcm[out] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
     }
-    recognitionFinal = "";
-    recognitionInterim = "";
+    return pcm.buffer;
   }
 
-  function finishRecognitionAfterSilence(){
-    recognitionSilenceTimer = null;
-    if (!open || muted || callTurnBusy) return;
-    const finalText = [recognitionFinal, recognitionInterim].filter(Boolean).join(" ").trim();
-    recognitionWanted = false;
-    const activeRecognition = recognition;
-    recognition = null;
-    if (activeRecognition){
-      activeRecognition.onend = null;
-      activeRecognition.onresult = null;
-      try{ activeRecognition.stop(); }catch(e){}
+  function stopDeepgramStt(){
+    deepgramWanted = false;
+    deepgramGeneration++;
+    if (deepgramSilenceTimer){ clearTimeout(deepgramSilenceTimer); deepgramSilenceTimer = null; }
+    if (deepgramReconnectTimer){ clearTimeout(deepgramReconnectTimer); deepgramReconnectTimer = null; }
+    if (sttProcessor){ try{ sttProcessor.disconnect(); }catch(e){} sttProcessor.onaudioprocess = null; sttProcessor = null; }
+    if (sttSource){ try{ sttSource.disconnect(); }catch(e){} sttSource = null; }
+    if (sttSilentGain){ try{ sttSilentGain.disconnect(); }catch(e){} sttSilentGain = null; }
+    if (sttAudioCtx){ try{ sttAudioCtx.close(); }catch(e){} sttAudioCtx = null; }
+    if (deepgramSocket){
+      const socket = deepgramSocket;
+      deepgramSocket = null;
+      socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+      try{ socket.close(1000, "stopped"); }catch(e){}
     }
-    recognitionFinal = "";
-    recognitionInterim = "";
+    deepgramFinal = "";
+    deepgramInterim = "";
+  }
+
+  function finishDeepgramAfterSilence(){
+    deepgramSilenceTimer = null;
+    if (!open || muted || callTurnBusy) return;
+    const finalText = [deepgramFinal, deepgramInterim].filter(Boolean).join(" ").trim();
+    stopDeepgramStt();
     if (finalText){
       setCaption("thinking");
       setTranscript("thinking...", true);
-      void sendVoiceText(finalText, "browser_speech");
+      void sendVoiceText(finalText, "deepgram");
     }else if (open && !muted){
-      startRecognition();
+      void startDeepgramStt();
     }
   }
 
-  function resetRecognitionSilenceTimer(){
-    if (recognitionSilenceTimer) clearTimeout(recognitionSilenceTimer);
-    recognitionSilenceTimer = setTimeout(finishRecognitionAfterSilence, 3000);
+  function resetDeepgramSilenceTimer(){
+    if (deepgramSilenceTimer) clearTimeout(deepgramSilenceTimer);
+    deepgramSilenceTimer = setTimeout(finishDeepgramAfterSilence, 3000);
+  }
+
+  function connectDeepgramSocket(generation){
+    if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy) return;
+    let socket;
+    try{ socket = new WebSocket(DEEPGRAM_STT_URL); }
+    catch(error){
+      setTranscript("Deepgram connection failed.", false);
+      return;
+    }
+    socket.binaryType = "arraybuffer";
+    deepgramSocket = socket;
+    socket.onopen = () => {
+      if (generation !== deepgramGeneration || !deepgramWanted){ try{ socket.close(); }catch(e){} return; }
+      setCaption("listening");
+      setTranscript("speak to me.", true);
+    };
+    socket.onmessage = (event) => {
+      if (generation !== deepgramGeneration || !deepgramWanted) return;
+      let data;
+      try{ data = JSON.parse(String(event.data || "")); }catch(e){ return; }
+      const heard = String(data.channel && data.channel.alternatives && data.channel.alternatives[0] && data.channel.alternatives[0].transcript || "").trim();
+      if (!heard) return;
+      if (data.is_final){
+        deepgramFinal += (deepgramFinal ? " " : "") + heard;
+        deepgramInterim = "";
+      }else{
+        deepgramInterim = heard;
+      }
+      const transcriptText = [deepgramFinal, deepgramInterim].filter(Boolean).join(" ");
+      setTranscript("你: " + transcriptText, true);
+      pulseVu(0.5 + Math.random() * 0.45);
+      resetDeepgramSilenceTimer();
+    };
+    socket.onerror = () => {
+      if (open && deepgramWanted) setTranscript("Deepgram connection interrupted. Reconnecting...", false);
+    };
+    socket.onclose = () => {
+      if (deepgramSocket === socket) deepgramSocket = null;
+      if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy) return;
+      if (deepgramReconnectTimer) clearTimeout(deepgramReconnectTimer);
+      deepgramReconnectTimer = setTimeout(() => {
+        deepgramReconnectTimer = null;
+        connectDeepgramSocket(generation);
+      }, 800);
+    };
+  }
+
+  async function startDeepgramStt(){
+    stopDeepgramStt();
+    if (!open || muted || callTurnBusy) return false;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.WebSocket){
+      setCaption("unavailable");
+      setTranscript("Microphone streaming is not supported in this browser.", false);
+      return false;
+    }
+    deepgramWanted = true;
+    deepgramFinal = "";
+    deepgramInterim = "";
+    const generation = ++deepgramGeneration;
+    try{
+      if (!mediaStream || !mediaStream.getAudioTracks().some(track => track.readyState === "live")){
+        const acquiredStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy){
+          acquiredStream.getTracks().forEach(track => { try{ track.stop(); }catch(e){} });
+          return false;
+        }
+        mediaStream = acquiredStream;
+        await startWaveMeter(mediaStream);
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) throw new Error("AudioContext unavailable");
+      let captureCtx;
+      try{ captureCtx = new AC({ sampleRate:16000 }); }
+      catch(e){ captureCtx = new AC(); }
+      sttAudioCtx = captureCtx;
+      await captureCtx.resume();
+      if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy){
+        try{ captureCtx.close(); }catch(e){}
+        if (sttAudioCtx === captureCtx) sttAudioCtx = null;
+        return false;
+      }
+      sttSource = captureCtx.createMediaStreamSource(mediaStream);
+      sttProcessor = captureCtx.createScriptProcessor(4096, 1, 1);
+      sttSilentGain = captureCtx.createGain();
+      sttSilentGain.gain.value = 0;
+      sttSource.connect(sttProcessor);
+      sttProcessor.connect(sttSilentGain);
+      sttSilentGain.connect(captureCtx.destination);
+      sttProcessor.onaudioprocess = event => {
+        const socket = deepgramSocket;
+        if (!deepgramWanted || !socket || socket.readyState !== WebSocket.OPEN) return;
+        const samples = event.inputBuffer.getChannelData(0);
+        try{ socket.send(pcm16At16k(samples, captureCtx.sampleRate)); }catch(e){}
+      };
+      connectDeepgramSocket(generation);
+      return true;
+    }catch(error){
+      if (generation === deepgramGeneration){
+        stopDeepgramStt();
+        setCaption("unavailable");
+        setTranscript("Microphone or Deepgram could not be started.", false);
+      }
+      return false;
+    }
   }
 
   function clearSpeechPlayback(){
@@ -3488,8 +3608,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (resumeTimer) clearTimeout(resumeTimer);
     resumeTimer = setTimeout(() => {
       resumeTimer = null;
-      if (!open || mediaRecorder) return;
-      startRecognition();
+      if (!open) return;
+      void startDeepgramStt();
     }, delay);
   }
 
@@ -3497,7 +3617,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     const clean = String(text || "").trim();
     if (!clean || !open || callTurnBusy) return;
     callTurnBusy = true;
-    recognitionWanted = false;
+    deepgramWanted = false;
     const sense = privateMode ? flushAudioSense() : "";
     const optimisticTs = Date.now();
     const tempKey = msgKey(localMessageId());
@@ -3523,7 +3643,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     callTurnController = new AbortController();
     try{
       const result = await apiVoiceText(clean + sense, {
-        source:source || "browser_speech",
+        source:source || "deepgram",
         call_id:callId,
         transcript:clean + sense,
         controller:callTurnController,
@@ -3559,69 +3679,12 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       if (open && !muted){
         setCaption("listening");
         setQuote(HINT_LISTENING, { hint:true });
-        startRecognition();
+        void startDeepgramStt();
       }
     }
   }
 
-  function startRecognition(){
-    if (!SpeechRecognition) return false;
-    stopRecognition();
-    recognitionWanted = true;
-    recognitionFinal = "";
-    recognitionInterim = "";
-    recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    recognition.onstart = () => {
-      if (!open) return;
-      setCaption("listening");
-      setTranscript("speak to me.", true);
-    };
-    recognition.onresult = (event) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++){
-        const piece = (event.results[i][0] && event.results[i][0].transcript || "").trim();
-        if (!piece) continue;
-        if (event.results[i].isFinal) recognitionFinal += (recognitionFinal ? " " : "") + piece;
-        else interim += piece;
-      }
-      recognitionInterim = interim;
-      const heard = [recognitionFinal, recognitionInterim].filter(Boolean).join(" ");
-      resetRecognitionSilenceTimer();
-      if (heard){
-        setTranscript("你: " + heard, true);
-        pulseVu(0.5 + Math.random() * 0.45);
-      }
-    };
-    recognition.onerror = (event) => {
-      if (!open) return;
-      const denied = event && (event.error === "not-allowed" || event.error === "service-not-allowed");
-      if (denied) recognitionWanted = false;
-      setTranscript(denied ? "麦克风权限没有打开。" : "语音识别暂时断开,正在重连。", false);
-    };
-    recognition.onend = () => {
-      recognition = null;
-      if (!open || !recognitionWanted || muted || callTurnBusy) return;
-      // iOS continuous recognition may end unexpectedly. A pending silence timer
-      // owns transcript submission; with no captured speech, simply resume listening.
-      if (!recognitionSilenceTimer) startRecognition();
-    };
-    try{
-      recognition.start();
-      return true;
-    }catch(e){
-      return false;
-    }
-  }
-
-  function stopRecorder(){
-    if (mediaRecorder && mediaRecorder.state !== "inactive"){
-      try{ mediaRecorder.stop(); }catch(e){}
-    }
-    mediaRecorder = null;
+  function stopMicrophone(){
     if (mediaStream){
       mediaStream.getTracks().forEach((t) => { try{ t.stop(); }catch(e){} });
     }
@@ -3629,52 +3692,10 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     stopWaveMeter();
   }
 
-  async function startRecorderFallback(){
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder){
-      setTranscript("这个浏览器不支持网页录音。", false);
-      return;
-    }
-    try{
-      if (!mediaStream) {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
-        });
-        await startWaveMeter(mediaStream);
-      }
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: mime });
-      mediaRecorder.ondataavailable = (event) => {
-        if (!open || !event.data || event.data.size < 1200) return;
-        apiVoiceBlob(event.data, mime, { call_id: callId }).catch(() => {
-          setTranscript("录音片段发送失败。", false);
-        });
-      };
-      mediaRecorder.start(4500);
-      setCaption("recording");
-      setTranscript("正在录音分段发送。若服务器配置了 ASR," + AI_NAME + "会收到转写。", true);
-    }catch(e){
-      setTranscript("麦克风启动失败。请检查浏览器权限。", false);
-    }
-  }
-
   async function startVoiceInput(){
     setCaption("listening");
     setTranscript("speak to me.", true);
-    if (!SpeechRecognition){
-      setCaption("unavailable");
-      setTranscript("This browser does not support speech recognition.", false);
-      return;
-    }
-    if (!mediaStream) {
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
-        await startWaveMeter(mediaStream);
-      } catch(e) {}
-    }
-    if (!startRecognition()){
-      setCaption("unavailable");
-      setTranscript("Speech recognition could not be started.", false);
-    }
+    await startDeepgramStt();
   }
 
   let ttsCtx = null;
@@ -3760,8 +3781,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (callTurnController && !callTurnController.signal.aborted) callTurnController.abort();
     callTurnController = null;
     callTurnBusy = false;
-    stopRecognition();
-    stopRecorder();
+    stopDeepgramStt();
+    stopMicrophone();
     clearSpeechPlayback();
     speakQueue.length = 0;
     speakBusy = false;
@@ -3784,7 +3805,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   async function drainSpeakQueue(){
     if (speakBusy || !speakQueue.length || !open) return;
     speakBusy = true;
-    stopRecognition();
+    stopDeepgramStt();
     while (speakQueue.length && open){
       const text = speakQueue.shift();
       setCaption("speaking");
@@ -3796,7 +3817,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       }
     }
     speakBusy = false;
-    if (open && !mediaRecorder){
+    if (open){
       setCaption("listening");
       setQuote(HINT_LISTENING, { hint: true });
       resumeListeningSoon(250);
@@ -3869,8 +3890,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     muted = !muted;
     if (mediaStream) mediaStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
     callMuteBtn.classList.toggle("active", muted);
-    if (muted) stopRecognition();
-    else if (open && !callTurnBusy && !speakBusy) startRecognition();
+    if (muted) stopDeepgramStt();
+    else if (open && !callTurnBusy && !speakBusy) void startDeepgramStt();
   });
   if (callPrivateBtn) callPrivateBtn.addEventListener("click", () => {
     privateMode = !privateMode;
