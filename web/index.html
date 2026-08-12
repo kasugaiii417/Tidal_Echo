@@ -229,7 +229,7 @@
     letter-spacing: 0;
   }
   .peerpill .status.dynamic-status{ font-size:clamp(11px, 1.6vw, 14px); }
-  .peerpill .status .status-cn{ font-size:.84em; }
+  .peerpill .status .status-cn{ font-size:.92em; }
   .peerpill .status.available{ display:inline-flex; align-items:center; gap:6px; }
   .peerpill .status.available::before{
     content:""; width:6px; height:6px; flex:none; border-radius:50%;
@@ -3312,16 +3312,16 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     return hours > 0 ? `${String(hours).padStart(2, "0")}:${mmss}` : mmss;
   }
 
-  function insertCallDurationMessage(endedAt){
+  function insertCallDurationMessage(endedAt, endedBy = "human"){
     const ts = new Date(endedAt).toISOString();
     setMessage({
       id:localMessageId(),
       ts,
-      from:"human",
-      kind:"user",
+      from:endedBy === "ai" ? "ai" : "human",
+      kind:endedBy === "ai" ? "reply" : "user",
       text:`通话时长 ${formatCallDuration(endedAt - callStartedAt)}`,
       voice:true,
-      meta:{ voice:true, call_id:callId, call_duration:true },
+      meta:{ voice:true, call_id:callId, call_duration:true, ended_by:endedBy },
       status:"sent"
     }, { render:false, cache:true });
     scheduleRender({ stickToBottom:true });
@@ -3761,6 +3761,10 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       confirmOptimistic(tempKey, msgKey(result.id));
       dropPendingOutgoing(tempKey);
       const fullText = String(result.text || "").trim();
+      if (result.hangup){
+        closeCall({ endedBy:"ai" });
+        return;
+      }
       if (fullText){
         setTranscript(AI_NAME + ": " + fullText, false);
         setQuote(fullText);
@@ -3861,12 +3865,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     apiCallEvent("start", { call_id: callId }).catch(() => {});
     await startVoiceInput();
   }
-  function closeCall(){
+  function closeCall(options = {}){
     if (!open) return;
+    const endedBy = options && options.endedBy === "ai" ? "ai" : "human";
     const closingCallId = callId;
     const endedAt = Date.now();
     insertVoiceCallDivider("ended");
-    insertCallDurationMessage(endedAt);
+    insertCallDurationMessage(endedAt, endedBy);
     open = false;
     minimized = false;
     privateMode = false;
@@ -3988,7 +3993,12 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     showIncomingCall(text);
   }
 
-  window.VoiceCall = { speak, incoming, peerTyping, close: closeCall, minimize: minimizeCall, expand: expandCall, isOpen: () => open, isMinimized: () => minimized };
+  window.VoiceCall = {
+    speak, incoming, peerTyping, close: closeCall,
+    remoteHangup:() => closeCall({ endedBy:"ai" }),
+    minimize:minimizeCall, expand:expandCall,
+    isOpen:() => open, isMinimized:() => minimized
+  };
 
   if (minimizeBtn) minimizeBtn.addEventListener("click", (e) => { e.stopPropagation(); minimizeCall(); });
   if (miniBar) miniBar.addEventListener("click", expandCall);
@@ -4008,7 +4018,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     callSpeakerBtn.classList.toggle("active");
   });
   callBtn.addEventListener("click", () => { open ? closeCall() : void openCall(); });
-  hangup.addEventListener("click", closeCall);
+  hangup.addEventListener("click", () => closeCall());
   if (incomingAccept) incomingAccept.addEventListener("click", () => { void acceptIncomingCall(); });
   if (incomingDecline) incomingDecline.addEventListener("click", hideIncomingCall);
   if (incomingScrim) incomingScrim.addEventListener("click", hideIncomingCall);
@@ -4395,7 +4405,7 @@ function extractAssistantStatus(raw){
 function assistantDisplayText(message){
   const text = String(message && message.text || "");
   if (!message || message.from !== "ai") return text;
-  return text.replace(/«status:\s*(.+?)»/g, "").replace(/«status:[^»]*$/g, "").trim();
+  return stripVoiceCallControlMarkers(text.replace(/«status:\s*(.+?)»/g, "").replace(/«status:[^»]*$/g, ""));
 }
 scheduleAssistantStatusExpiry();
 function setConn(state){
@@ -5932,6 +5942,11 @@ function onMessage(m){
     applyReaction(m);
     return;
   }
+  if (m.from === "ai" && /\[hangup\]/i.test(String(m.text || ""))){
+    m = { ...m, text:stripVoiceCallControlMarkers(m.text) };
+    if (window.VoiceCall && window.VoiceCall.isOpen()) window.VoiceCall.remoteHangup();
+    if (!m.text) return;
+  }
   if (m.from === "ai" && (m.kind === "call" || /\[call\]/i.test(String(m.text || "")))){
     if (!msgInActiveSession(m)) return;
     const callStick = nearBottom();
@@ -6537,6 +6552,18 @@ function renderConversationList(){
       </button>
     </div>`).join("") : '<div class="conversation-empty">还没有对话。<br>点右上角的＋开始。</div>';
 }
+function renameConversation(id){
+  const row = conversations.find(conversation => conversation.id === id);
+  if (!row) return;
+  const next = window.prompt("修改对话标题", row.title || "新对话");
+  if (next == null) return;
+  const title = String(next).replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!title || title === row.title) return;
+  row.title = title;
+  saveConversationIndex();
+  renderConversationList();
+  showToast("标题已更新");
+}
 function makeConversationId(){
   return (crypto.randomUUID && crypto.randomUUID()) || (`conversation-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 }
@@ -6859,7 +6886,47 @@ async function exportConversation(id){
   setTimeout(() => URL.revokeObjectURL(url), 3000);
   showToast(`Exported ${exportedMessages.length} messages`);
 }
+let conversationLongPressTimer = null;
+let conversationLongPressTarget = null;
+let conversationLongPressX = 0;
+let conversationLongPressY = 0;
+let suppressConversationClickUntil = 0;
+function clearConversationLongPress(){
+  if (conversationLongPressTimer) clearTimeout(conversationLongPressTimer);
+  conversationLongPressTimer = null;
+  conversationLongPressTarget = null;
+}
+if (conversationList) conversationList.addEventListener("pointerdown", e => {
+  if (e.button != null && e.button !== 0) return;
+  if (e.target.closest("[data-delete-conversation]")) return;
+  const item = e.target.closest("[data-conversation-id]");
+  if (!item) return;
+  clearConversationLongPress();
+  conversationLongPressTarget = item.dataset.conversationId;
+  conversationLongPressX = e.clientX;
+  conversationLongPressY = e.clientY;
+  conversationLongPressTimer = setTimeout(() => {
+    const id = conversationLongPressTarget;
+    clearConversationLongPress();
+    suppressConversationClickUntil = Date.now() + 700;
+    try{ navigator.vibrate && navigator.vibrate(18); }catch(_){}
+    renameConversation(id);
+  }, 560);
+});
+if (conversationList) conversationList.addEventListener("pointermove", e => {
+  if (!conversationLongPressTimer) return;
+  if (Math.hypot(e.clientX - conversationLongPressX, e.clientY - conversationLongPressY) > 10) clearConversationLongPress();
+});
+if (conversationList) ["pointerup", "pointercancel", "pointerleave"].forEach(type => conversationList.addEventListener(type, clearConversationLongPress));
+if (conversationList) conversationList.addEventListener("contextmenu", e => {
+  if (e.target.closest("[data-conversation-id]")) e.preventDefault();
+});
 if (conversationList) conversationList.addEventListener("click", e => {
+  if (Date.now() < suppressConversationClickUntil){
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   const deleteButton = e.target.closest("[data-delete-conversation]");
   if (deleteButton){
     e.stopPropagation();
@@ -7040,8 +7107,8 @@ function hideMemoryOperationsWhileStreaming(text){
 }
 function hideCallMarkersWhileStreaming(text){
   return String(text || "")
-    .replace(/\[call\]/gi, "")
-    .replace(/\[(?:c(?:a(?:l(?:l)?)?)?)?$/i, "");
+    .replace(/\[(?:call|voice\s*call|voicecall|hangup)\]/gi, "")
+    .replace(/\[(?:c(?:a(?:l(?:l)?)?)?|v(?:o(?:i(?:c(?:e(?:\s*c(?:a(?:l(?:l)?)?)?)?)?)?)?)?|h(?:a(?:n(?:g(?:u(?:p)?)?)?)?)?)?$/i, "");
 }
 function interceptIncomingCallMarker(text){
   const source = String(text || "");
@@ -7049,6 +7116,13 @@ function interceptIncomingCallMarker(text){
   const visible = source.replace(/\[call\]/gi, "").replace(/[ \t]+\n/g, "\n").trim();
   if (window.VoiceCall) window.VoiceCall.incoming(visible);
   return visible;
+}
+function stripVoiceCallControlMarkers(text){
+  return String(text || "")
+    .replace(/\[(?:voice\s*call|voicecall)\]/gi, "")
+    .replace(/\[hangup\]/gi, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 function splitAssistantBubbleText(value){
   const lines = String(value || "").replace(/\r\n/g, "\n").split("\n");
@@ -7521,11 +7595,12 @@ function gatewayLocalTime(ts){
 }
 function gatewayContentForMessage(m, includeTimestamp = false){
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
-  const voicePrefix = m.voice || (m.meta && m.meta.voice) ? "[voice call] " : "";
+  const voicePrefix = m.from === "human" && (m.voice || (m.meta && m.meta.voice)) ? "[voice call] " : "";
   const prefix = voicePrefix + (includeTimestamp ? `${gatewayLocalTime(m.ts)} ` : "");
-  if (!atts.length) return prefix + (m.text || "");
+  const messageText = m.from === "ai" ? stripVoiceCallControlMarkers(m.text) : (m.text || "");
+  if (!atts.length) return prefix + messageText;
   const blocks = [];
-  if (m.text || prefix) blocks.push({ type:"text", text:prefix + (m.text || "") });
+  if (messageText || prefix) blocks.push({ type:"text", text:prefix + messageText });
   atts.forEach(a => {
     const match = /^data:([^;,]+);base64,(.+)$/.exec(a.url || "");
     if (a.kind === "image" && match){
@@ -7573,7 +7648,9 @@ You can manage the client-side memory archive by emitting one fenced code block 
 {"action":"add"|"edit"|"delete","id":number,"content":"text"}
 \`\`\`
 For edit and delete, use an existing record ID exactly. For add, omit id or choose an unused positive ID. Content is required for add/edit and ignored for delete. The app executes the operation and hides the code block from chat. Use one operation block at a time.`;
-  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol;
+  const voiceCallProtocol = `## Voice Call Controls
+The prefix [voice call] on a user message is metadata indicating spoken input. Never repeat or quote [voice call] or [voicecall] in your response. If you choose to end an active voice call, emit [hangup] exactly once; the client will hide it and close the call.`;
+  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol;
   const history = gatewayHistoryMessages();
   return [{ role:"system", content:systemContent }, ...history];
 }
@@ -7659,7 +7736,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
       if ((eventName === "content_block_delta" || ev.type === "content_block_delta") && ev.delta && ev.delta.type === "text_delta"){
         const deltaText = ev.delta.text || "";
         text += deltaText;
-        if (options.onText) options.onText(hideCallMarkersWhileStreaming(text), deltaText);
+        if (options.onText) options.onText(hideCallMarkersWhileStreaming(text), hideCallMarkersWhileStreaming(deltaText));
         const block = blocksByIndex.get(Number(ev.index));
         if (block && block.type === "text") block.text += deltaText;
         scheduleStreamPaint();
@@ -7705,14 +7782,15 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
   if (streamPaintTimer){ clearTimeout(streamPaintTimer); streamPaintTimer = null; }
   const cleanContentBlocks = contentBlocks.filter(Boolean).map(block => {
     if (block.type === "tool_use") return { type:block.type, id:block.id, name:block.name, input:block.input || {} };
-    return { type:"text", text:block.text || "" };
+    return { type:"text", text:stripVoiceCallControlMarkers(block.text) };
   });
   const toolUses = cleanContentBlocks.filter(block => block.type === "tool_use");
   if (!text && !toolUses.length){
     if (interrupted) return { text:"", contentBlocks:[], toolUses:[], stopReason, interrupted:true };
     throw new Error("Gateway returned no text");
   }
-  const visibleText = text ? interceptIncomingCallMarker(interceptMemoryOperations(text)) : "";
+  const assistantRequestedHangup = /\[hangup\]/i.test(text);
+  const visibleText = text ? stripVoiceCallControlMarkers(interceptIncomingCallMarker(interceptMemoryOperations(text))) : "";
   const statusProcessed = visibleText
     ? extractAssistantStatus({ from:"ai", text:visibleText })
     : null;
@@ -7723,7 +7801,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
     streamChunkIds.length = 0;
     scheduleRender({ stickToBottom:nearBottom() });
     await flushMessageCacheNow();
-    return { text, contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted };
+    return { text:"", contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted, hangup:assistantRequestedHangup };
   }
   const uncachedUsageTokens = Number.isFinite(uncachedInputTokens) || Number.isFinite(outputTokens)
     ? (Number.isFinite(uncachedInputTokens) ? uncachedInputTokens : 0) + (Number.isFinite(outputTokens) ? outputTokens : 0)
@@ -7731,7 +7809,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
   reconcileStreamChunks(chunks, "sent", uncachedUsageTokens);
   await flushMessageCacheNow();
   if (!interrupted) playReceiveSound();
-  return { text, contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted };
+  return { text:renderableText, contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted, hangup:assistantRequestedHangup };
 }
 async function requestGateway(messages, systemContent, signal, options = {}){
   let response;
@@ -7856,6 +7934,7 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
   }
   showTyping();
   let finalText = "";
+  let assistantRequestedHangup = false;
   try{
     const messages = gatewayConversation();
     if (attachments && attachments.length && messages.length){
@@ -7877,7 +7956,8 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
         throw error;
       }
       const streamed = await consumeAnthropicStream(response, localMessageId(), generationController.signal, options);
-      finalText = String(streamed.text || "").replace(/\[call\]/gi, "").trim();
+      finalText = stripVoiceCallControlMarkers(String(streamed.text || "").replace(/\[call\]/gi, ""));
+      assistantRequestedHangup = assistantRequestedHangup || !!streamed.hangup;
       if (streamed.interrupted || generationController.signal.aborted) return { id:humanId, aborted:true };
       if (!streamed.toolUses.length) break;
       outboundMessages.push({ role:"assistant", content:streamed.contentBlocks });
@@ -7896,7 +7976,7 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
       });
       if (toolRound === 7) throw new Error("Tool loop exceeded 8 rounds");
     }
-    return { id:humanId, text:finalText };
+    return { id:humanId, text:finalText, hangup:assistantRequestedHangup };
   }finally{
     if (!options.voice && activeGenerationController === generationController){
       activeGenerationController = null;
