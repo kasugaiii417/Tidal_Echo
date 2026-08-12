@@ -609,6 +609,7 @@
   .human-sticker-line{
     display:flex; align-items:flex-start; justify-content:flex-end;
     gap:clamp(10px, 1.6vw, 16px);
+    margin-right:calc((var(--avatar-size) + clamp(10px, 1.6vw, 16px)) * -1);
   }
   .human-sticker-avatar{
     flex:0 0 var(--avatar-size); width:var(--avatar-size); height:var(--avatar-size);
