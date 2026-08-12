@@ -606,6 +606,16 @@
     display:block; width:min(32vw,130px); height:auto; max-height:170px;
     object-fit:contain; border:0; border-radius:0; background:transparent; box-shadow:none;
   }
+  .human-sticker-line{
+    display:flex; align-items:flex-start; justify-content:flex-end;
+    gap:clamp(10px, 1.6vw, 16px);
+  }
+  .human-sticker-avatar{
+    flex:0 0 var(--avatar-size); width:var(--avatar-size); height:var(--avatar-size);
+    margin-top:clamp(5px, 1vw, 9px); border-radius:50%;
+    background-image:var(--human-avatar-default); background-size:cover; background-position:center;
+    box-shadow:0 12px 24px rgba(24,46,67,.14);
+  }
   .bubble.sticker-layout .meta{ margin-top:0; }
   .bubble.has-att{ display:flex; flex-direction:column; gap:6px; overflow:hidden; }
   .bubble.att-only{ background:transparent !important; padding:0 !important; box-shadow:none !important; }
@@ -4742,11 +4752,15 @@ function stickerParts(text, sender){
 function stickerMessageHtml(text, sender){
   const parts = stickerParts(text, sender);
   if (!parts) return null;
+  const hasTextPart = parts.some(part => part.type === "text" && part.value.trim());
   return parts.map(part => {
     if (part.type === "text") return `<span class="sticker-text-part">${renderText(part.value.trim())}</span>`;
     const path = `${part.folder}/${part.filename}`;
     const src = STICKER_BASE_URL + path.split("/").map(encodeURIComponent).join("/");
-    return `<img class="chat-sticker" src="${escapeHtml(src)}" alt="${escapeHtml(part.marker)}" loading="lazy" decoding="async">`;
+    const image = `<img class="chat-sticker" src="${escapeHtml(src)}" alt="${escapeHtml(part.marker)}" loading="lazy" decoding="async">`;
+    return sender === "human" && hasTextPart
+      ? `<span class="human-sticker-line">${image}<span class="human-sticker-avatar" aria-hidden="true"></span></span>`
+      : image;
   }).join("");
 }
 function hideIncompleteStickerWhileStreaming(text){
