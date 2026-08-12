@@ -3943,13 +3943,16 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   }
 
   async function speakOne(text){
+    let blob = null;
     try{
       console.log("[speak] fetching TTS…");
-      const blob = await apiTts(text);
+      blob = await apiTts(text);
       console.log("[speak] blob:", blob && blob.size);
       if (blob && open){
         const ctx = ensureTtsCtx();
         if (ctx){
+          if (ctx.state === "suspended") await ctx.resume();
+          if (ctx.state !== "running") throw new Error("TTS AudioContext is " + ctx.state);
           const arrayBuf = await blob.arrayBuffer();
           const audioBuf = await ctx.decodeAudioData(arrayBuf);
           if (!open) return;
@@ -3991,7 +3994,51 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
         }
       }
     }catch(e){
-      console.error("[speak] speakOne failed:", e);
+      console.warn("[speak] WebAudio playback failed, trying HTMLAudio:", e);
+      if (blob && open){
+        try{
+          clearSpeechPlayback();
+          ttsUrl = URL.createObjectURL(blob);
+          const audio = new Audio(ttsUrl);
+          ttsAudio = audio;
+          audio.preload = "auto";
+          audio.playsInline = true;
+          await new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (error) => {
+              if (settled) return;
+              settled = true;
+              if (speakTimeout){ clearTimeout(speakTimeout); speakTimeout = null; }
+              audio.onended = audio.onerror = null;
+              setWaveLevel(0);
+              if (error) reject(error); else resolve();
+            };
+            audio.onended = () => finish();
+            audio.onerror = () => finish(new Error("HTMLAudio could not play TTS"));
+            speakTimeout = setTimeout(() => finish(new Error("HTMLAudio TTS timeout")), 120000);
+            audio.play().then(() => {
+              const pulse = () => {
+                if (settled || audio.paused || !open) return;
+                if (!minimized) setWaveLevel(.45 + Math.random() * .5);
+                setTimeout(pulse, 140);
+              };
+              pulse();
+            }).catch(finish);
+          });
+          if (ttsAudio === audio) ttsAudio = null;
+          if (ttsUrl){ URL.revokeObjectURL(ttsUrl); ttsUrl = ""; }
+          return;
+        }catch(fallbackError){
+          console.error("[speak] HTMLAudio fallback failed:", fallbackError);
+          if (open){
+            setCaption("audio unavailable");
+            setTranscript("TTS playback failed.", false);
+            await new Promise(resolve => setTimeout(resolve, 900));
+          }
+        }
+      }else{
+        console.error("[speak] TTS request failed:", e);
+      }
     }
   }
 
