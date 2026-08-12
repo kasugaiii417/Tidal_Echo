@@ -3914,11 +3914,10 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
         call_id:callId,
         transcript:clean + sense,
         controller:callTurnController,
-        onText(fullText){
+        onText(){
           if (!open) return;
-          setCaption("speaking");
-          setTranscript(AI_NAME + ": " + fullText, true);
-          setQuote(fullText);
+          setCaption("thinking");
+          setTranscript("thinking...", true);
         }
       }, Number(tempKey));
       if (result && result.aborted){
@@ -3931,8 +3930,6 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       dropPendingOutgoing(tempKey);
       const fullText = String(result.text || "").trim();
       if (fullText){
-        setTranscript(AI_NAME + ": " + fullText, false);
-        setQuote(fullText);
         await speakOne(fullText);
       }
       if (result.hangup){
@@ -4090,7 +4087,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     while (speakQueue.length && open){
       const text = speakQueue.shift();
       setCaption("speaking");
-      setQuote(text);
+      setTranscript(AI_NAME + " is speaking…", false);
+      setQuote(AI_NAME + " is speaking…", { hint:true });
       try{
         await speakOne(text);
       }catch(e){
@@ -4129,6 +4127,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
             ttsSource = source;
             source.buffer = audioBuf;
             source.connect(ctx.destination);
+            setCaption("speaking");
+            setTranscript(AI_NAME + " is speaking…", false);
             source.start(0);
             let lyricId = null;
             const lyricLines = callQuoteText ? callQuoteText.querySelectorAll(".lyric-line") : [];
@@ -4185,6 +4185,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
             audio.onerror = () => finish(new Error("HTMLAudio could not play TTS"));
             speakTimeout = setTimeout(() => finish(new Error("HTMLAudio TTS timeout")), 120000);
             audio.play().then(() => {
+              setCaption("speaking");
+              setTranscript(AI_NAME + " is speaking…", false);
               const pulse = () => {
                 if (settled || audio.paused || !open) return;
                 if (!minimized) setWaveLevel(.45 + Math.random() * .5);
