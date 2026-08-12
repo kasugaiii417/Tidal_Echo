@@ -588,6 +588,22 @@
   .row.human.tail .bubble{ border-bottom-right-radius: 2px; }
 
   .bubble .txt{ white-space: normal; }
+  .bubble.sticker-layout{
+    display:flex; flex-direction:column; align-items:flex-start; gap:7px;
+    max-width:86%; padding:0; background:transparent; box-shadow:none;
+  }
+  .row.human .bubble.sticker-layout{ align-items:flex-end; background:transparent; box-shadow:none; }
+  .sticker-text-part{
+    display:block; padding:8px 12px; border-radius:16px;
+    background:var(--bubble-ai-bg); color:var(--bubble-ai-fg);
+    box-shadow:0 10px 28px rgba(78,94,108,.08);
+  }
+  .row.human .sticker-text-part{ background:var(--bubble-human-bg); color:var(--bubble-human-fg); }
+  .chat-sticker{
+    display:block; width:min(32vw,130px); height:auto; max-height:170px;
+    object-fit:contain; border:0; border-radius:0; background:transparent; box-shadow:none;
+  }
+  .bubble.sticker-layout .meta{ margin-top:0; }
   .bubble.has-att{ display:flex; flex-direction:column; gap:6px; overflow:hidden; }
   .bubble.att-only{ background:transparent !important; padding:0 !important; box-shadow:none !important; }
   .att-img-link{ display:block; line-height:0; border-radius:14px; overflow:hidden; width:min(64vw,260px); max-width:100%; box-sizing:border-box; aspect-ratio:var(--att-ratio, 1.04); max-height:340px; background:rgba(125,128,135,.10); }
@@ -1074,6 +1090,21 @@
   .emojibtn:active{ transform: scale(.85); color: var(--text); }
   .emojibtn:hover{ color: var(--text); }
   .emojibtn svg{ width: clamp(22px, 3vw, 30px); height: clamp(22px, 3vw, 30px); display:block; }
+  .sticker-picker{
+    position:fixed; z-index:115; left:50%; bottom:var(--composer-zone);
+    width:min(calc(100vw - 28px),430px); max-height:min(46vh,360px); overflow-y:auto;
+    padding:12px; border:1px solid var(--hairline); border-radius:20px;
+    background:color-mix(in srgb,var(--composer-bg) 90%,transparent);
+    box-shadow:var(--shadow); transform:translate(-50%,8px); opacity:0; pointer-events:none;
+    -webkit-backdrop-filter:blur(22px) saturate(1.25); backdrop-filter:blur(22px) saturate(1.25);
+    transition:opacity .18s ease,transform .22s var(--ease-soft);
+  }
+  .sticker-picker.open{ opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+  .sticker-picker-title{ padding:1px 3px 10px; color:var(--text-soft); font-size:12px; }
+  .sticker-grid{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+  .sticker-choice{ border:0; border-radius:13px; padding:6px; background:rgba(255,255,255,.22); cursor:pointer; }
+  .sticker-choice:active{ transform:scale(.94); background:var(--row-press); }
+  .sticker-choice img{ display:block; width:100%; aspect-ratio:1; object-fit:contain; }
   /* ── 回到最新 · 翻历史时来新消息,底部悬浮一枚安静的半透明胶囊 ── */
   .newmsg-pill{
     position: fixed; left: 50%; z-index: 90;
@@ -2302,6 +2333,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M6.5 10.5L12 5l5.5 5.5"/></svg>
     </button>
   </footer>
+  <section class="sticker-picker" id="stickerPicker" aria-label="Sticker picker" aria-hidden="true">
+    <div class="sticker-picker-title">Kitty stickers</div>
+    <div class="sticker-grid" id="stickerGrid"></div>
+  </section>
   <button class="newmsg-pill" id="newMsgBtn" type="button" aria-label="回到最新消息">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>
     <span>新消息</span>
@@ -2758,6 +2793,94 @@ try{
 const GATEWAY_URL = CONFIG.GATEWAY_URL.replace(/\/$/, "");
 const TTS_URL = new URL("/api/tts", GATEWAY_URL).toString();
 const FETCH_PROXY_URL = "https://fetch-proxy.chenv354canada.workers.dev";
+const STICKER_BASE_URL = "https://pub-7bfa2e84af8f43bd921710f5a84e9b52.r2.dev/";
+const STICKER_CATALOGUE = {
+  kitty:[
+    "Mae_Haii!!!33Hewwo!!!!!>::::<.JPG",
+    "Mae_me looking at the single mother as i swallow her car keys.JPG",
+    "autism_to_autism_connection.JPG",
+    "bunny_paws_at_u_can_i_have_a_cigarette.JPG",
+    "cat_are_u_sick_of_me.JPG",
+    "cat_creepy_im_in_ur_walls.JPG",
+    "cat_creepy_stare.JPG",
+    "cat_cry_he_tryna_eat_the_thoughts_and_pain_away.JPG",
+    "cat_everything_happens_for_a_reason_ we_met_bc_we_r_going_2get_married..JPG",
+    "cat_for_my_next_trick_i_am_going_to_stutter_16_times_in_a_5_word_sentence_and_stare_at_you_like_its_your_fault.JPG",
+    "cat_i_miss_you_scratch_screen.JPG",
+    "cat_idk_where_im_going_but_im_gay.JPG",
+    "cat_just_so_yk,İ_giggle_and_kick_my_feet_when_u_text_me.JPG",
+    "cat_lore_update_im_going_to_bed.JPG",
+    "cat_missing_notice=missing_u_sm.JPG",
+    "cat_shocked.JPG",
+    "cats_height_difference.JPG",
+    "cats_want_to_be_silly_w_u.JPG",
+    "cats_we_are_so_goated_together_twin.JPG",
+    "come_be_my_pillow.JPG",
+    "crow_creepy_stare.JPG",
+    "cuddle_stares_autistically.JPG",
+    "cute_deer_i_need_a_cigarette.JPG",
+    "down_bad_for_her.JPG",
+    "fox_cry.JPG",
+    "fox_paws_at_u_can_i_have_u_forever.JPG",
+    "fuck_sleeping_imagine_kissing.JPG",
+    "german_shepherd_cute.JPG",
+    "grey_kitten_fullof_violence_thoughts.JPG",
+    "hate_texting_come_live_w_me.JPG",
+    "kitten_creepy_forrest_bro...are_we_firting_or_is_it_like... a_bro_thing.JPG",
+    "kitten_embrace_ur_inner_silliness.JPG",
+    "kitten_fire_time_to_lock_in.JPG",
+    "kitten_send_kiss.JPG",
+    "kitten_stare_we_r_holdin_hands_(i_have_glued_them).JPG",
+    "kitten_teleport_to_me.JPG",
+    "kitten_we_on_the_same_freakuency.JPG",
+    "pet_fox_through_screen.JPG",
+    "pet_racoon_through_screen.JPG",
+    "polar_bear_stare.JPG",
+    "raccoon_absolute_cinema.JPG",
+    "raccoon_blep.JPG",
+    "raccoon_ohno.JPG",
+    "raccoon_peek_cute.JPG",
+    "raccoon_shades2.JPG",
+    "red_even_gangsta_like_me_needs_a_neck_kiss.JPG"
+  ],
+  hannes:[
+    "and_when_im_six_feet_under_and_the_bugs_are_eating_my_heart_all_they_taste _is_you.JPG",
+    "autism_to_autism_connection.JPG",
+    "bunny_paws_at_u_can_i_have_a_cigarette.JPG",
+    "cat_creepy_im_in_ur_walls.JPG",
+    "cat_creepy_stare.JPG",
+    "cat_i_miss_you_scratch_screen.JPG",
+    "cat_tie_my_gf_told_me_to_stfu_and_listen.JPG",
+    "cats_height_difference.JPG",
+    "cats_want_to_be_silly_w_u.JPG",
+    "cats_we_are_so_goated_together_twin.JPG",
+    "come_be_my_pillow.JPG",
+    "crow_creepy_stare.JPG",
+    "cute_deer_i_need_a_cigarette.JPG",
+    "down_bad_for_her.JPG",
+    "fox_cry.JPG",
+    "fox_paws_at_u_can_i_have_u_forever.JPG",
+    "fuck_sleeping_imagine_kissing.JPG",
+    "german_shepherd_cute.JPG",
+    "grey_kitten_fullof_violence_thoughts.JPG",
+    "hate_texting_come_live_w_me.JPG",
+    "pet_racoon_through_screen.JPG",
+    "polar_bear_stare.JPG",
+    "raccoon_absolute_cinema.JPG",
+    "raccoon_blep.JPG",
+    "raccoon_guitar_shades.JPG",
+    "raccoon_ohno.JPG",
+    "raccoon_peek_cute.JPG",
+    "raccoon_shades2.JPG",
+    "red_even_gangsta_like_me_needs_a_neck_kiss.JPG",
+    "shark_waiting_for_kiss.JPG",
+    "shes_so_cute_in_her_glasses.JPG",
+    "tiny_raccoon_talk_to_me_i_lonly.JPG",
+    "us_batman_kitty.JPG",
+    "we_may_not_be_officially_married_but_ur_still_my_wife _regardless.JPG",
+    "wolf_howl_i_miss_my_wife_cringe.JPG"
+  ]
+};
 const TOOLS = [
   {
     name:"fetch_json",
@@ -2828,6 +2951,7 @@ const $ = (s) => document.querySelector(s);
 const loginEl = $("#login"), appEl = $("#app");
 const scrollEl = $("#scroll"), emptyEl = $("#empty");
 const statusEl = $("#status"), inputEl = $("#input"), sendBtn = $("#sendBtn"), newMsgBtn = $("#newMsgBtn");
+const emojiBtn = $("#emojiBtn"), stickerPicker = $("#stickerPicker"), stickerGrid = $("#stickerGrid");
 const micBtn = $("#micBtn"), clipBtn = $("#clipBtn"), avatarBtn = $("#avatarBtn");
 const clipInput = $("#clipInput");
 const localPreview = new Map();   // serverUrl -> blob: 本地预览，避免上传后重新下载闪烁
@@ -4586,6 +4710,35 @@ function renderText(t){
   s = s.replace(/\n/g, "<br>");
   return s;
 }
+const STICKER_PATTERN = /\[sticker:(kitty|hannes)\/([^\]\/\r\n]+)\]/gi;
+function stickerParts(text, sender){
+  const source = String(text || "");
+  const allowedFolder = sender === "ai" ? "hannes" : "kitty";
+  const parts = [];
+  let cursor = 0, match;
+  STICKER_PATTERN.lastIndex = 0;
+  while ((match = STICKER_PATTERN.exec(source))){
+    const folder = match[1].toLowerCase();
+    const filename = match[2];
+    if (folder !== allowedFolder || !STICKER_CATALOGUE[folder]?.includes(filename)) continue;
+    if (match.index > cursor) parts.push({ type:"text", value:source.slice(cursor, match.index) });
+    parts.push({ type:"sticker", folder, filename, marker:match[0] });
+    cursor = match.index + match[0].length;
+  }
+  if (!parts.length) return null;
+  if (cursor < source.length) parts.push({ type:"text", value:source.slice(cursor) });
+  return parts.filter(part => part.type === "sticker" || part.value.trim());
+}
+function stickerMessageHtml(text, sender){
+  const parts = stickerParts(text, sender);
+  if (!parts) return null;
+  return parts.map(part => {
+    if (part.type === "text") return `<span class="sticker-text-part">${renderText(part.value.trim())}</span>`;
+    const path = `${part.folder}/${part.filename}`;
+    const src = STICKER_BASE_URL + path.split("/").map(encodeURIComponent).join("/");
+    return `<img class="chat-sticker" src="${escapeHtml(src)}" alt="${escapeHtml(part.marker)}" loading="lazy" decoding="async">`;
+  }).join("");
+}
 function parseAssistantVoiceSegments(text){
   const source = String(text || "");
   const segments = [];
@@ -5528,6 +5681,7 @@ function makeToolCard(rowData){
 function makeMessage(rowData){
   const m = rowData.message;
   const displayText = assistantDisplayText(m);
+  const stickerHtml = stickerMessageHtml(displayText, m.from);
   const row = document.createElement("div");
   row.className = `row ${m.from === "human" ? "human" : "ai"}${rowData.grouped ? " grouped" : ""}${rowData.tail ? " tail" : ""}`;
   row.dataset.id = m.id; row.dataset.from = m.from; row.dataset.ts = tsMs(m); row.dataset.messageKey = m._key;
@@ -5540,6 +5694,7 @@ function makeMessage(rowData){
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+  if (stickerHtml) bubble.classList.add("sticker-layout");
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
   const voiceIcon = m.voice || (m.meta && m.meta.voice)
     ? '<span class="voice-call-icon" aria-label="Voice call" title="Voice call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v2.4a2 2 0 0 1-2.2 2 19.4 19.4 0 0 1-8.4-3 19 19 0 0 1-5.9-5.9 19.4 19.4 0 0 1-3-8.4A2 2 0 0 1 4.5 2h2.4a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.4a15.6 15.6 0 0 0 6.6 6.6l1-1a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 1.8z"/></svg></span>'
@@ -5547,7 +5702,7 @@ function makeMessage(rowData){
   let _inner = voiceIcon;
   if (atts.length) _inner += renderAttachments(atts);
   const voiceSegments = m.from === "ai" && m.status !== "streaming" ? parseAssistantVoiceSegments(displayText) : [];
-  if (displayText) _inner += `<span class="txt">${voiceSegments.length ? voiceMessageHtml(displayText, voiceSegments) : renderText(displayText)}</span>`;
+  if (displayText) _inner += stickerHtml || `<span class="txt">${voiceSegments.length ? voiceMessageHtml(displayText, voiceSegments) : renderText(displayText)}</span>`;
   _inner += `<span class="meta"></span>`;
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
@@ -7437,6 +7592,40 @@ inputEl.addEventListener("beforeinput", (e) => {
 inputEl.addEventListener("focus", () => setTimeout(scrollToBottom, 60));
 sendBtn.addEventListener("click", () => activeGenerationController ? stopActiveGeneration() : doSend());
 
+function setStickerPickerOpen(open){
+  if (!stickerPicker) return;
+  stickerPicker.classList.toggle("open", !!open);
+  stickerPicker.setAttribute("aria-hidden", String(!open));
+}
+function renderStickerPicker(){
+  if (!stickerGrid) return;
+  stickerGrid.innerHTML = (STICKER_CATALOGUE.kitty || []).map(filename => {
+    const marker = `[sticker:kitty/${filename}]`;
+    const src = STICKER_BASE_URL + "kitty/" + encodeURIComponent(filename);
+    return `<button class="sticker-choice" type="button" data-sticker-marker="${escapeHtml(marker)}" aria-label="${escapeHtml(filename)}"><img src="${escapeHtml(src)}" alt="" loading="lazy"></button>`;
+  }).join("");
+}
+renderStickerPicker();
+if (emojiBtn) emojiBtn.addEventListener("click", event => {
+  event.preventDefault();
+  setStickerPickerOpen(!(stickerPicker && stickerPicker.classList.contains("open")));
+});
+if (stickerGrid) stickerGrid.addEventListener("click", event => {
+  const choice = event.target.closest("[data-sticker-marker]");
+  if (!choice || activeGenerationController) return;
+  const marker = choice.dataset.stickerMarker;
+  const existing = inputEl.value.trim();
+  inputEl.value = existing ? `${existing}\n${marker}` : marker;
+  inputEl.dispatchEvent(new Event("input", { bubbles:true }));
+  setStickerPickerOpen(false);
+  void doSend();
+});
+document.addEventListener("pointerdown", event => {
+  if (!stickerPicker || !stickerPicker.classList.contains("open")) return;
+  if (event.target.closest("#stickerPicker,#emojiBtn")) return;
+  setStickerPickerOpen(false);
+});
+
 function triggerSendPress(){
   if (!sendBtn) return;
   sendBtn.classList.remove("send-go");
@@ -7760,7 +7949,10 @@ You can manage the client-side memory archive by emitting one fenced code block 
 For edit and delete, use an existing record ID exactly. For add, omit id or choose an unused positive ID. Content is required for add/edit and ignored for delete. The app executes the operation and hides the code block from chat. Use one operation block at a time.`;
   const voiceCallProtocol = `## Voice Call Controls
 The prefix [voice call] on a user message is metadata indicating spoken input. Never repeat or quote [voice call] or [voicecall] in your response. If you choose to end an active voice call, emit [hangup] exactly once; the client will hide it and close the call.`;
-  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol;
+  const hannesStickers = (STICKER_CATALOGUE.hannes || []).map(filename => `[sticker:hannes/${filename}]`).join(", ");
+  const stickerProtocol = `## Stickers
+You may send only Hannes stickers using the exact marker [sticker:hannes/filename]. Available stickers: ${hannesStickers || "none"}. Never use sticker files from kitty/. Sticker markers may accompany text and must be emitted exactly as listed.`;
+  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol + "\n\n" + stickerProtocol;
   const history = gatewayHistoryMessages();
   return [{ role:"system", content:systemContent }, ...history];
 }
