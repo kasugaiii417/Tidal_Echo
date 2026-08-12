@@ -637,6 +637,29 @@
     font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .92em;
     background: rgba(120,100,80,0.14); padding: 1px 5px; border-radius: 5px;
   }
+  .message-code-block{
+    display:block; position:relative; margin:7px 0; overflow:hidden;
+    border:1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-radius:11px; background:rgba(31,42,53,.10);
+  }
+  .message-code-head{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    min-height:30px; padding:3px 6px 3px 10px;
+    border-bottom:1px solid color-mix(in srgb, currentColor 12%, transparent);
+    font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
+    color:inherit; opacity:.72;
+  }
+  .message-code-copy{
+    appearance:none; border:0; border-radius:7px; padding:5px 8px;
+    background:rgba(255,255,255,.24); color:inherit; font:inherit; cursor:pointer;
+  }
+  .message-code-copy:active{ transform:scale(.96); }
+  .message-code-body{
+    display:block; max-width:100%; margin:0; padding:10px 11px; overflow:auto;
+    white-space:pre; overflow-wrap:normal; -webkit-overflow-scrolling:touch;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:.86em; line-height:1.55;
+    color:inherit;
+  }
   .bubble .txt strong{ font-weight: 700; }
   .voice-player{
     display:inline-flex; align-items:center; gap:8px; min-width:210px; max-width:100%;
@@ -3380,7 +3403,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   const callSpeakerBtn = $("#callSpeakerBtn");
 
   const VU_BARS = 16;   // 每侧声纹竖条数
-  const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev?language=multi";
+  const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev?model=nova-3&language=multi";
   const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
 
   let open = false;
@@ -4723,13 +4746,28 @@ function fmtDay(ts){
 function escapeHtml(s){
   return String(s || "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 }
-function renderText(t){
+function renderInlineText(t){
   let s = escapeHtml(t);
   s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   s = s.replace(/\n/g, "<br>");
   return s;
+}
+function renderText(t){
+  const source = String(t || "");
+  const fence = /```([^\r\n`]*)\r?\n?([\s\S]*?)(```|$)/g;
+  let html = "", cursor = 0, match;
+  while ((match = fence.exec(source))){
+    html += renderInlineText(source.slice(cursor, match.index));
+    const language = match[1].trim() || "code";
+    const code = match[2].replace(/\r?\n$/, "");
+    html += `<span class="message-code-block"><span class="message-code-head"><span>${escapeHtml(language)}</span><button class="message-code-copy" type="button" aria-label="Copy code">Copy</button></span><pre class="message-code-body">${escapeHtml(code)}</pre></span>`;
+    cursor = match.index + match[0].length;
+    if (!match[3]) break;
+  }
+  html += renderInlineText(source.slice(cursor));
+  return html;
 }
 const STICKER_PATTERN = /\[sticker:(kitty|hannes)\/([^\]\/\r\n]+)\]/gi;
 function stickerParts(text, sender){
@@ -6279,6 +6317,29 @@ function applyReaction(ev){
 }
 
 /* ════════════ 长按气泡 · 复制菜单 (TG 式:遮罩 + 抬起 + 动作条) ════════════ */
+scrollEl.addEventListener("click", async (event) => {
+  const button = event.target.closest(".message-code-copy");
+  if (!button || !scrollEl.contains(button)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const code = button.closest(".message-code-block")?.querySelector(".message-code-body")?.textContent || "";
+  if (!code) return;
+  try{
+    await navigator.clipboard.writeText(code);
+    showToast("代码已复制");
+  }catch(_){
+    try{
+      const textarea = document.createElement("textarea");
+      textarea.value = code;
+      textarea.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      showToast(copied ? "代码已复制" : "复制失败");
+    }catch(_fallback){ showToast("复制失败"); }
+  }
+});
 (function setupMessageMenu(){
   const menu = $("#msgMenu");
   if (!menu) return;
