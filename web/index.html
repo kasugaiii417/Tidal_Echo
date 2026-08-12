@@ -3260,6 +3260,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let callTurnBusy = false, callTurnController = null, ttsSource = null;
   let incomingOpen = false;
   let pendingIncomingText = "";
+  let pendingRemoteHangup = false;
 
   function buildVu(){
     if (waveBuilt) return;
@@ -3761,14 +3762,14 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       confirmOptimistic(tempKey, msgKey(result.id));
       dropPendingOutgoing(tempKey);
       const fullText = String(result.text || "").trim();
-      if (result.hangup){
-        closeCall({ endedBy:"ai" });
-        return;
-      }
       if (fullText){
         setTranscript(AI_NAME + ": " + fullText, false);
         setQuote(fullText);
         await speakOne(fullText);
+      }
+      if (result.hangup){
+        closeCall({ endedBy:"ai" });
+        return;
       }
     }catch(error){
       dropPendingOutgoing(tempKey);
@@ -3896,6 +3897,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     clearSpeechPlayback();
     speakQueue.length = 0;
     speakBusy = false;
+    pendingRemoteHangup = false;
     if (ttsCtx){ try{ ttsCtx.close(); }catch(e){} ttsCtx = null; }
     applyConversationMode();
     apiCallEvent("end", { call_id: closingCallId }).catch(() => {});
@@ -3928,6 +3930,11 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       }
     }
     speakBusy = false;
+    if (pendingRemoteHangup && open){
+      pendingRemoteHangup = false;
+      closeCall({ endedBy:"ai" });
+      return;
+    }
     if (open){
       setCaption("listening");
       setQuote(HINT_LISTENING, { hint: true });
@@ -3993,9 +4000,18 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     showIncomingCall(text);
   }
 
+  function remoteHangupAfterSpeech(){
+    if (!open) return;
+    pendingRemoteHangup = true;
+    if (!speakBusy && !speakQueue.length){
+      pendingRemoteHangup = false;
+      closeCall({ endedBy:"ai" });
+    }
+  }
+
   window.VoiceCall = {
     speak, incoming, peerTyping, close: closeCall,
-    remoteHangup:() => closeCall({ endedBy:"ai" }),
+    remoteHangup:remoteHangupAfterSpeech,
     minimize:minimizeCall, expand:expandCall,
     isOpen:() => open, isMinimized:() => minimized
   };
@@ -5453,8 +5469,9 @@ function makeToolCard(rowData){
   row.dataset.id = m.id;
   row.dataset.from = "ai";
   row.dataset.messageKey = m._key;
+  const toolIcon = meta.local_memory ? "✦" : "🔗";
   row.innerHTML = `<details class="tool-card${meta.error ? " error" : ""}">
-    <summary><span class="tool-icon" aria-hidden="true">🔗</span><span class="tool-name">${escapeHtml(meta.tool_name || "fetch")}</span>${methodBadge}<span class="tool-url" title="${escapeHtml(displayUrl)}">${escapeHtml(displayUrl)}</span><span class="tool-preview">${escapeHtml(preview)}${displayResult.replace(/\s+/g, " ").trim().length > 80 ? "…" : ""}</span></summary>
+    <summary><span class="tool-icon" aria-hidden="true">${toolIcon}</span><span class="tool-name">${escapeHtml(meta.tool_name || "fetch")}</span>${methodBadge}<span class="tool-url" title="${escapeHtml(displayUrl)}">${escapeHtml(displayUrl)}</span><span class="tool-preview">${escapeHtml(preview)}${displayResult.replace(/\s+/g, " ").trim().length > 80 ? "…" : ""}</span></summary>
     ${showRequest ? `<details class="tool-request" open><summary><span class="tool-req-label">Request · 请求参数</span></summary><div class="tool-request-body">${reqHtml}</div></details>` : ""}
     <pre class="tool-result">${escapeHtml(displayResult)}</pre>
   </details>`;
@@ -5920,6 +5937,7 @@ function hideTyping(){
 }
 
 function onMessage(m){
+  let remoteHangupAfterMessage = false;
   if (m.type === "ping") return;
   if (m.type === "thinking_delta" || m.type === "reply_delta"){
     queueStreamDelta(m);
@@ -5943,9 +5961,12 @@ function onMessage(m){
     return;
   }
   if (m.from === "ai" && /\[hangup\]/i.test(String(m.text || ""))){
+    remoteHangupAfterMessage = true;
     m = { ...m, text:stripVoiceCallControlMarkers(m.text) };
-    if (window.VoiceCall && window.VoiceCall.isOpen()) window.VoiceCall.remoteHangup();
-    if (!m.text) return;
+    if (!m.text){
+      if (window.VoiceCall && window.VoiceCall.isOpen()) window.VoiceCall.remoteHangup();
+      return;
+    }
   }
   if (m.from === "ai" && (m.kind === "call" || /\[call\]/i.test(String(m.text || "")))){
     if (!msgInActiveSession(m)) return;
@@ -5977,7 +5998,10 @@ function onMessage(m){
   if (stick && m.kind !== "thinking" && m.kind !== "act") freshKeys.add(key);          // 在底部时新消息弹入
   if (m.from === "ai" && m.kind !== "thinking" && m.kind !== "act"){               // act 是环境信息:不响铃、不在通话里朗读
     playReceiveSound();
-    if (window.VoiceCall && window.VoiceCall.isOpen()) window.VoiceCall.speak(m.text || "");
+    if (window.VoiceCall && window.VoiceCall.isOpen()){
+      window.VoiceCall.speak(m.text || "");
+      if (remoteHangupAfterMessage) window.VoiceCall.remoteHangup();
+    }
   }
   setMessage({ ...m, status:"sent" }, { render:false });
   scheduleRender({ stickToBottom: stick });
@@ -7087,12 +7111,43 @@ function applyMemoryOperation(operation, { notify = true } = {}){
   if (notify) showToast("Memory updated");
   return true;
 }
+function renderMemoryOperation(operation, succeeded){
+  const action = String(operation && operation.action || "unknown").toLowerCase();
+  const id = Number(operation && operation.id);
+  const idLabel = Number.isInteger(id) && id > 0 ? `#${id}` : "(auto ID)";
+  const result = succeeded
+    ? `Memory ${action} ${idLabel} succeeded`
+    : `Memory ${action} ${idLabel} failed`;
+  setMessage({
+    id:localMessageId(),
+    ts:new Date().toISOString(),
+    from:"ai",
+    kind:"tool",
+    text:"",
+    meta:{
+      local_memory:true,
+      tool_name:`memory_${action}`,
+      tool_input:{
+        action,
+        ...(Number.isInteger(id) && id > 0 ? { id } : {}),
+        ...(operation && operation.content != null ? { content:String(operation.content) } : {})
+      },
+      url:`memory://${idLabel}`,
+      result,
+      error:!succeeded
+    },
+    status:"sent"
+  }, { render:false, cache:false });
+}
 function interceptMemoryOperations(text){
-  let updated = false;
+  let updated = false, found = false;
   const visible = String(text || "").replace(/```memory_operation\s*([\s\S]*?)```/gi, (block, json) => {
     try{
       const operation = JSON.parse(String(json || "").trim());
-      if (applyMemoryOperation(operation, { notify:false })) updated = true;
+      found = true;
+      const succeeded = applyMemoryOperation(operation, { notify:false });
+      renderMemoryOperation(operation, succeeded);
+      if (succeeded) updated = true;
       return "";
     }catch(e){
       console.error("invalid memory_operation", e);
@@ -7100,6 +7155,7 @@ function interceptMemoryOperations(text){
     }
   }).trim();
   if (updated) showToast("Memory updated");
+  if (found) scheduleRender({ stickToBottom:nearBottom() });
   return visible;
 }
 function hideMemoryOperationsWhileStreaming(text){
@@ -7626,6 +7682,13 @@ function gatewayHistoryMessages(){
     .map(m => {
       if (m.kind === "tool"){
         const meta = m.meta || {};
+        if (meta.local_memory){
+          // The chat card shows the full edited memory for the human, but the
+          // conversational transcript only tells Claude whether its operation
+          // succeeded. The memory archive itself is supplied separately by the
+          // system-level Memories section.
+          return { role:"assistant", content:String(meta.result || "Memory operation completed") };
+        }
         const lines = [
           `[Tool call: ${meta.tool_name || "fetch"}]`,
           `URL: ${meta.url || ""}`,
