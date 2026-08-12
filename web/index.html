@@ -3405,10 +3405,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   const VU_BARS = 16;   // 每侧声纹竖条数
   const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev?model=nova-3&language=multi";
   const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
+  const CALL_TTS_VOLUME_LOW = 0.35;
+  const CALL_TTS_VOLUME_HIGH = 0.70;
 
   let open = false;
   let minimized = false;
   let muted = false;
+  let speakerLoud = false;
   let privateMode = false;
   let audioSenseInterval = null;
   let secs = 0, tickId = null, hideId = null, rafId = null;
@@ -3425,7 +3428,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null;
   let speakSeq = 0;
   let callId = "", callStartedAt = 0;
-  let callTurnBusy = false, callTurnController = null, ttsSource = null;
+  let callTurnBusy = false, callTurnController = null, ttsSource = null, ttsGainNode = null;
   let incomingOpen = false;
   let pendingIncomingText = "";
   let pendingRemoteHangup = false;
@@ -3868,7 +3871,24 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     }
     try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
     if (ttsSource){ try{ ttsSource.stop(); }catch(e){} ttsSource = null; }
+    if (ttsGainNode){ try{ ttsGainNode.disconnect(); }catch(e){} ttsGainNode = null; }
     speakingUtterance = null;
+  }
+
+  function callTtsVolume(){
+    return speakerLoud ? CALL_TTS_VOLUME_HIGH : CALL_TTS_VOLUME_LOW;
+  }
+  function applyCallTtsVolume(){
+    const volume = callTtsVolume();
+    if (ttsGainNode){
+      try{ ttsGainNode.gain.setValueAtTime(volume, ttsGainNode.context.currentTime); }catch(e){ ttsGainNode.gain.value = volume; }
+    }
+    if (ttsAudio) ttsAudio.volume = volume;
+    if (callSpeakerBtn){
+      callSpeakerBtn.classList.toggle("active", speakerLoud);
+      callSpeakerBtn.setAttribute("aria-pressed", speakerLoud ? "true" : "false");
+      callSpeakerBtn.title = speakerLoud ? "TTS volume 70%" : "TTS volume 35%";
+    }
   }
 
   function resumeListeningSoon(delay = 300){
@@ -4016,11 +4036,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     secs = 0; timerEl.textContent = fmt(secs);
     minimized = false;
     muted = false;
+    speakerLoud = false;
     privateMode = false;
     stopAudioSense();
     overlay.classList.remove("minimized");
     if (callMuteBtn) callMuteBtn.classList.remove("active");
     if (callPrivateBtn) callPrivateBtn.classList.remove("active");
+    applyCallTtsVolume();
     inputEl.disabled = true;
     sendBtn.disabled = true;
     if (clipBtn) clipBtn.disabled = true;
@@ -4124,9 +4146,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
           if (!open) return;
           await new Promise((resolve) => {
             const source = ctx.createBufferSource();
+            const gain = ctx.createGain();
             ttsSource = source;
+            ttsGainNode = gain;
             source.buffer = audioBuf;
-            source.connect(ctx.destination);
+            gain.gain.value = callTtsVolume();
+            source.connect(gain);
+            gain.connect(ctx.destination);
             setCaption("speaking");
             setTranscript(AI_NAME + " is speaking…", false);
             source.start(0);
@@ -4155,7 +4181,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
             const vuTick = setInterval(() => { if (!minimized) setWaveLevel(0.45 + Math.random() * 0.5); }, 140);
             const stopVu = () => { clearInterval(vuTick); setWaveLevel(0); if (lyricId) clearTimeout(lyricId); };
             const safety = setTimeout(() => { stopVu(); resolve(); }, (audioBuf.duration * 1000) + 3000);
-            source.onended = () => { clearTimeout(safety); stopVu(); if (ttsSource === source) ttsSource = null; resolve(); };
+            source.onended = () => {
+              clearTimeout(safety); stopVu();
+              if (ttsSource === source) ttsSource = null;
+              if (ttsGainNode === gain) ttsGainNode = null;
+              try{ gain.disconnect(); }catch(e){}
+              resolve();
+            };
             console.log("[speak] WebAudio playing, duration:", audioBuf.duration.toFixed(1) + "s");
           });
           return;
@@ -4171,6 +4203,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
           ttsAudio = audio;
           audio.preload = "auto";
           audio.playsInline = true;
+          audio.volume = callTtsVolume();
           await new Promise((resolve, reject) => {
             let settled = false;
             const finish = (error) => {
@@ -4248,7 +4281,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (privateMode) startAudioSense(); else stopAudioSense();
   });
   if (callSpeakerBtn) callSpeakerBtn.addEventListener("click", () => {
-    callSpeakerBtn.classList.toggle("active");
+    speakerLoud = !speakerLoud;
+    applyCallTtsVolume();
   });
   callBtn.addEventListener("click", () => { open ? closeCall() : void openCall(); });
   hangup.addEventListener("click", () => closeCall());
