@@ -4739,6 +4739,20 @@ function stickerMessageHtml(text, sender){
     return `<img class="chat-sticker" src="${escapeHtml(src)}" alt="${escapeHtml(part.marker)}" loading="lazy" decoding="async">`;
   }).join("");
 }
+function hideIncompleteStickerWhileStreaming(text){
+  const source = String(text || "");
+  // Do not flash a partially streamed sticker marker as ordinary chat text.
+  // Once the closing bracket arrives, the normal sticker renderer takes over.
+  const openAt = source.lastIndexOf("[");
+  if (openAt < 0) return source;
+  const suffix = source.slice(openAt);
+  if (suffix.includes("]") || /[\r\n]/.test(suffix)) return source;
+  const lower = suffix.toLowerCase();
+  const markerPrefix = "[sticker:";
+  return markerPrefix.startsWith(lower) || lower.startsWith(markerPrefix)
+    ? source.slice(0, openAt)
+    : source;
+}
 function parseAssistantVoiceSegments(text){
   const source = String(text || "");
   const segments = [];
@@ -5707,8 +5721,8 @@ function makeMessage(rowData){
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
   const metaEl = bubble.querySelector(".meta");
-  if (m.status === "sending") metaEl.innerHTML = `<span>${fmtTime(m.ts)}</span>` + sendingTickHtml();
-  else if (m.status === "failed"){
+  if (metaEl && m.status === "sending") metaEl.innerHTML = stickerHtml ? sendingTickHtml() : `<span>${fmtTime(m.ts)}</span>` + sendingTickHtml();
+  else if (metaEl && m.status === "failed"){
     metaEl.innerHTML = `<span class="fail">未送达 · 重试</span>`;
     const fail = metaEl.querySelector(".fail");
     fail.addEventListener("click", () => {
@@ -5717,7 +5731,7 @@ function makeMessage(rowData){
       inputEl.dispatchEvent(new Event("input"));
       doSend();
     });
-  }else fillMeta(metaEl, m.ts, m.from === "human");
+  }else if (metaEl && !stickerHtml) fillMeta(metaEl, m.ts, m.from === "human");
   row.appendChild(bubble);
   if (voiceSegments.length){
     const joinedVoiceText = voiceSegments.map(segment => segment.content).join(" ");
@@ -8001,7 +8015,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
   };
   const paintStream = () => {
     streamPaintTimer = null;
-    const visible = hideAssistantVoiceWhileStreaming(hideCallMarkersWhileStreaming(hideMemoryOperationsWhileStreaming(text)));
+    const visible = hideIncompleteStickerWhileStreaming(hideAssistantVoiceWhileStreaming(hideCallMarkersWhileStreaming(hideMemoryOperationsWhileStreaming(text))));
     const chunks = splitAssistantBubbleText(visible);
     reconcileStreamChunks(chunks, "streaming");
   };
