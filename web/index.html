@@ -4698,11 +4698,12 @@ const DEFAULT_ACT_HEIGHT = 34;     // 折叠态的动作 chip≈一行;展开后
 const DEFAULT_DAY_HEIGHT = 30;
 const DEFAULT_NEW_HEIGHT = 46;
 // ── DOM 回收(虚拟窗口)参数 ──
-// n ≤ DOM_WINDOW 时退化为全量渲染(= v78,常见几百~几千条手感零变化);超过才启用回收。
-const DOM_WINDOW = 2400;      // DOM 里最多物化的行数。真机调:测回收逻辑可临时设 200 强制触发,生产留大(2400)
-const DOM_PAD_UP = 1100;      // recenter 时视口上方保留行数
-const DOM_PAD_DOWN = 1100;    // recenter 时视口下方保留行数(PAD_UP+PAD_DOWN < DOM_WINDOW,留滞回带防抖)
-const DOM_EDGE = 600;         // 视口逼近物化边缘到 600 行内 → idle 时 recenter(远大于单次惯性行数,正常滚动碰不到 spacer)
+// Safari 对含图片、阴影和事件监听器的长 DOM 很敏感。历史仍完整保留在
+// virtualRows/IndexedDB；这里只限制同时挂在页面上的节点数量，向上翻时按窗口换入。
+const DOM_WINDOW = 220;
+const DOM_PAD_UP = 90;
+const DOM_PAD_DOWN = 110;
+const DOM_EDGE = 42;
 const SCROLL_IDLE_MS = 140;   // 滚动停止判定:惯性结束后再做卸载/插入
 const CACHE_DB = "companion-message-cache";
 const CACHE_STORE = "messages";
