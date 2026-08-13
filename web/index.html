@@ -2909,6 +2909,7 @@ const STICKER_CATALOGUE = {
     "fox_paws_at_u_can_i_have_u_forever.JPG",
     "fuck_sleeping_imagine_kissing.JPG",
     "german_shepherd_cute.JPG",
+    "german_shep_me_if_u_even_care.JPG",
     "grey_kitten_fullof_violence_thoughts.JPG",
     "hate_texting_come_live_w_me.JPG",
     "kitten_driving.JPG",
@@ -2920,6 +2921,7 @@ const STICKER_CATALOGUE = {
     "raccoon_ohno.JPG",
     "raccoon_peek_cute.JPG",
     "raccoon_cry_plz_just_fking_hug_me.JPG",
+    "raccoon_silly_hehe.JPG",
     "raccoon_shades2.JPG",
     "red_even_gangsta_like_me_needs_a_neck_kiss.JPG",
     "shark_waiting_for_kiss.JPG",
@@ -4708,6 +4710,7 @@ const SCROLL_IDLE_MS = 140;   // 滚动停止判定:惯性结束后再做卸载/
 const CACHE_DB = "companion-message-cache";
 const CACHE_STORE = "messages";
 const CONVERSATION_CACHE_STORE = "conversations";
+const MESSAGE_JOURNAL_STORE = "message_journal";
 const TTS_AUDIO_STORE = "tts_audio";
 const CONVERSATIONS_KEY = "companion_conversations_v1";
 const ACTIVE_CONVERSATION_KEY = "companion_active_conversation_v1";
@@ -5274,7 +5277,7 @@ function resetChatState(){
   freshKeys.clear();
   hideNewMsgPill();
 }
-function setMessage(raw, { render = true, cache = true } = {}){
+function setMessage(raw, { render = true, cache = true, journal = cache } = {}){
   raw = extractAssistantStatus(raw);
   const key = msgKey(raw.id);
   if (raw._statusOnly){
@@ -5299,6 +5302,10 @@ function setMessage(raw, { render = true, cache = true } = {}){
   if (idNum > lastId) lastId = idNum;
   if (render) scheduleRender({ stickToBottom: nearBottom() });
   if (cache) scheduleCacheSave({ allowShrink:raw.status === "failed" });
+  if (journal){
+    const stored = messageByKey.get(key);
+    if (stored) void queueMessageJournalPut(activeConversationId, stored);
+  }
   scheduleTerminalRender();
   return messageByKey.get(key);
 }
@@ -5317,6 +5324,7 @@ function removeMessage(key, { render = true, cache = true } = {}){
     void deleteTtsAudio(audioKey);
   }
   seen.delete(k);
+  void queueMessageJournalDelete(activeConversationId, k);
   invalidateRows();
   if (render) scheduleRender({ preserveAnchor: true });
   scheduleTerminalRender();
@@ -5340,6 +5348,8 @@ function confirmOptimistic(tempKey, serverId, serverMessage){
     _key: realKey
   });
   messageByKey.set(realKey, existing);
+  void queueMessageJournalDelete(activeConversationId, oldKey);
+  void queueMessageJournalPut(activeConversationId, existing);
   messageOrderVersion++;
   seen.add(realKey);
   invalidateRows();
@@ -6619,16 +6629,75 @@ if (newMsgBtn) newMsgBtn.addEventListener("click", () => { hideNewMsgPill(); scr
 function openMessageDb(){
   return new Promise((resolve, reject) => {
     if (!window.indexedDB){ reject(new Error("indexedDB unavailable")); return; }
-    const req = indexedDB.open(CACHE_DB, 3);
+    const req = indexedDB.open(CACHE_DB, 4);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE, { keyPath:"id" });
       if (!db.objectStoreNames.contains(CONVERSATION_CACHE_STORE)) db.createObjectStore(CONVERSATION_CACHE_STORE, { keyPath:"id" });
       if (!db.objectStoreNames.contains(TTS_AUDIO_STORE)) db.createObjectStore(TTS_AUDIO_STORE, { keyPath:"id" });
+      if (!db.objectStoreNames.contains(MESSAGE_JOURNAL_STORE)){
+        const journal = db.createObjectStore(MESSAGE_JOURNAL_STORE, { keyPath:"id" });
+        journal.createIndex("conversationId", "conversationId", { unique:false });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error || new Error("indexedDB open"));
   });
+}
+function journalMessageRecord(conversationId, message){
+  const messageId = msgKey(message && message.id);
+  return {
+    id:`${conversationId}\u0000${messageId}`,
+    conversationId,
+    messageId,
+    message:{
+      id:messageId, ts:message.ts, from:message.from, kind:message.kind,
+      text:message.text || "", voice:!!message.voice, meta:message.meta || {},
+      status:message.status || "sent"
+    },
+    updatedAt:Date.now()
+  };
+}
+let messageJournalChain = Promise.resolve();
+function queueMessageJournalPut(conversationId, message){
+  if (!conversationId || !message || message.status === "streaming" || message.status === "failed") return messageJournalChain;
+  const record = journalMessageRecord(conversationId, message);
+  messageJournalChain = messageJournalChain.catch(() => {}).then(async () => {
+    const db = await openMessageDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(MESSAGE_JOURNAL_STORE, "readwrite");
+      tx.objectStore(MESSAGE_JOURNAL_STORE).put(record);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { const error = tx.error || new Error("message journal write"); db.close(); reject(error); };
+    });
+  }).catch(error => console.error("message journal write failed", error));
+  return messageJournalChain;
+}
+function queueMessageJournalDelete(conversationId, messageId){
+  if (!conversationId) return messageJournalChain;
+  const id = `${conversationId}\u0000${msgKey(messageId)}`;
+  messageJournalChain = messageJournalChain.catch(() => {}).then(async () => {
+    const db = await openMessageDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(MESSAGE_JOURNAL_STORE, "readwrite");
+      tx.objectStore(MESSAGE_JOURNAL_STORE).delete(id);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { const error = tx.error || new Error("message journal delete"); db.close(); reject(error); };
+    });
+  }).catch(error => console.error("message journal delete failed", error));
+  return messageJournalChain;
+}
+async function readMessageJournal(conversationId){
+  try{
+    const db = await openMessageDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(MESSAGE_JOURNAL_STORE, "readonly");
+      const req = tx.objectStore(MESSAGE_JOURNAL_STORE).index("conversationId").getAll(conversationId);
+      req.onsuccess = () => resolve((req.result || []).map(row => row.message).filter(Boolean));
+      req.onerror = () => reject(req.error || new Error("message journal read"));
+      tx.oncomplete = () => db.close();
+    });
+  }catch(_){ return []; }
 }
 async function readTtsAudio(id){
   try{
@@ -6780,10 +6849,15 @@ async function deleteConversationIndexed(id){
   try{
     const db = await openMessageDb();
     await new Promise((resolve, reject) => {
-      const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
+      const tx = db.transaction([CONVERSATION_CACHE_STORE, MESSAGE_JOURNAL_STORE], "readwrite");
       const store = tx.objectStore(CONVERSATION_CACHE_STORE);
       store.delete(id);
       store.delete(`${id}:messages_backup`);
+      const journalReq = tx.objectStore(MESSAGE_JOURNAL_STORE).index("conversationId").openCursor(IDBKeyRange.only(id));
+      journalReq.onsuccess = () => {
+        const cursor = journalReq.result;
+        if (cursor){ cursor.delete(); cursor.continue(); }
+      };
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => { const error = tx.error; db.close(); reject(error); };
     });
@@ -6804,27 +6878,51 @@ async function readLegacyMessages(){
 async function readCachedMessages(){
   const indexed = await readConversationIndexed();
   const local = readConversationLocal();
+  const journal = await readMessageJournal(activeConversationId);
+  const mergeJournal = (base) => {
+    const merged = new Map();
+    (base || []).forEach(message => {
+      const key = msgKey(message && message.id);
+      if (!deletedKeys.has(key)) merged.set(key, message);
+    });
+    journal.forEach(message => {
+      const key = msgKey(message && message.id);
+      if (deletedKeys.has(key)) merged.delete(key);
+      else merged.set(key, message.status === "sending" ? { ...message, status:"sent" } : message);
+    });
+    return Array.from(merged.values()).sort((a, b) => msgNum(a.id) - msgNum(b.id));
+  };
   if (indexed !== null){
     if (local !== null && local.length > indexed.length){
-      await queueConversationIndexedWrite(activeConversationId, local, { allowShrink:true });
+      const recovered = mergeJournal(local);
+      await queueConversationIndexedWrite(activeConversationId, recovered, { allowShrink:true });
       console.warn("Recovered a longer pre-migration localStorage snapshot", { indexed:indexed.length, local:local.length });
       try{ localStorage.removeItem(conversationMessagesKey()); }catch(_){}
-      return local;
+      return recovered;
     }
     try{ localStorage.removeItem(conversationMessagesKey()); }catch(_){}
-    return indexed;
+    const recovered = mergeJournal(indexed);
+    if (recovered.length > indexed.length){
+      console.warn("Recovered recent messages from per-message journal", { indexed:indexed.length, recovered:recovered.length });
+      void queueConversationIndexedWrite(activeConversationId, recovered, { allowShrink:true });
+    }
+    return recovered;
   }
   if (local !== null){
     const id = activeConversationId;
-    await queueConversationIndexedWrite(id, local, { allowShrink:true });
+    const recovered = mergeJournal(local);
+    await queueConversationIndexedWrite(id, recovered, { allowShrink:true });
     try{ localStorage.removeItem(conversationMessagesKey(id)); }catch(_){}
-    console.info("Migrated conversation messages from localStorage to IndexedDB", id, local.length);
-    return local;
+    console.info("Migrated conversation messages from localStorage to IndexedDB", id, recovered.length);
+    return recovered;
   }
+  if (journal.length) return mergeJournal([]);
   if (activeConversationId !== DEFAULT_CONVERSATION_ID) return [];
   const legacy = await readLegacyMessages();
   if (legacy.length){
-    await queueConversationIndexedWrite(activeConversationId, legacy, { allowShrink:true });
+    const recovered = mergeJournal(legacy);
+    await queueConversationIndexedWrite(activeConversationId, recovered, { allowShrink:true });
+    return recovered;
   }
   return legacy;
 }
@@ -6841,10 +6939,11 @@ function writeMessageCache({ allowShrink = false } = {}){
   updateConversationSummary(items);
   return indexedSave;
 }
-function flushMessageCacheNow(){
+async function flushMessageCacheNow(){
   if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
   const allowShrink = pendingCacheAllowShrink;
   pendingCacheAllowShrink = false;
+  await messageJournalChain.catch(() => {});
   return writeMessageCache({ allowShrink });
 }
 async function navigateToAlbum(){
@@ -8138,7 +8237,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
           ? { usage_tokens:finalUsageTokens, input_tokens:uncachedInputTokens, output_tokens:outputTokens, ...(options.voice ? { voice:true } : {}) }
           : (options.voice ? { voice:true } : {}),
         status
-      }, { render:false, cache:false });
+      }, { render:false, cache:false, journal:status !== "streaming" });
     });
     scheduleRender({ stickToBottom });
   };
