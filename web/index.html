@@ -2933,18 +2933,6 @@ const STICKER_CATALOGUE = {
     "wolf_howl_i_miss_my_wife_cringe.JPG"
   ]
 };
-// Claude-facing marker names stay clean and predictable. These two legacy R2
-// objects were uploaded with a literal space before the final word, so only
-// the display URL needs to translate to the physical object key.
-const STICKER_FILE_ALIASES = {
-  "hannes/and_when_im_six_feet_under_and_the_bugs_are_eating_my_heart_all_they_taste_is_you.JPG":
-    "and_when_im_six_feet_under_and_the_bugs_are_eating_my_heart_all_they_taste _is_you.JPG",
-  "hannes/we_may_not_be_officially_married_but_ur_still_my_wife_regardless.JPG":
-    "we_may_not_be_officially_married_but_ur_still_my_wife _regardless.JPG"
-};
-function stickerObjectFilename(folder, filename){
-  return STICKER_FILE_ALIASES[`${folder}/${filename}`] || filename;
-}
 const TOOLS = [
   {
     name:"fetch_json",
@@ -4852,7 +4840,7 @@ function stickerMessageHtml(text, sender){
   const hasTextPart = parts.some(part => part.type === "text" && part.value.trim());
   return parts.map(part => {
     if (part.type === "text") return `<span class="sticker-text-part">${renderText(part.value.trim())}</span>`;
-    const path = `${part.folder}/${stickerObjectFilename(part.folder, part.filename)}`;
+    const path = `${part.folder}/${part.filename}`;
     const src = STICKER_BASE_URL + path.split("/").map(encodeURIComponent).join("/");
     const image = `<img class="chat-sticker" src="${escapeHtml(src)}" alt="${escapeHtml(part.marker)}" loading="lazy" decoding="async">`;
     return sender === "human" && hasTextPart
