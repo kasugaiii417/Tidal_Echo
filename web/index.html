@@ -7531,7 +7531,8 @@ function renderMemoryPage(){
 }
 function applyMemoryOperation(operation, { notify = true } = {}){
   if (!operation || typeof operation !== "object") return false;
-  const action = String(operation.action || "").toLowerCase();
+  let action = String(operation.action || "").toLowerCase();
+  if (action === "update") action = "edit";
   const requestedId = Number(operation.id);
   const hasValidId = Number.isInteger(requestedId) && requestedId > 0;
   const content = String(operation.content || "").trim();
@@ -7556,7 +7557,8 @@ function applyMemoryOperation(operation, { notify = true } = {}){
   return true;
 }
 function renderMemoryOperation(operation, succeeded){
-  const action = String(operation && operation.action || "unknown").toLowerCase();
+  let action = String(operation && operation.action || "unknown").toLowerCase();
+  if (action === "update") action = "edit";
   const id = Number(operation && operation.id);
   const idLabel = Number.isInteger(id) && id > 0 ? `#${id}` : "(auto ID)";
   const result = succeeded
@@ -7583,27 +7585,59 @@ function renderMemoryOperation(operation, succeeded){
     status:"sent"
   }, { render:false, cache:false });
 }
+function parseMemoryOperationPayload(raw){
+  const source = String(raw || "").trim();
+  if (!source) return [];
+  let parsed;
+  try{ parsed = JSON.parse(source); }
+  catch(_){
+    // Claude occasionally surrounds the JSON with one explanatory sentence.
+    const firstObject = source.indexOf("{");
+    const lastObject = source.lastIndexOf("}");
+    if (firstObject < 0 || lastObject <= firstObject) return null;
+    try{ parsed = JSON.parse(source.slice(firstObject, lastObject + 1)); }
+    catch(_inner){ return null; }
+  }
+  let operations = Array.isArray(parsed) ? parsed : (Array.isArray(parsed && parsed.operations) ? parsed.operations : [parsed]);
+  operations = operations.filter(operation => {
+    if (!operation || typeof operation !== "object") return false;
+    const action = String(operation.action || "").toLowerCase();
+    return action === "add" || action === "edit" || action === "update" || action === "delete";
+  });
+  return operations.length ? operations : null;
+}
 function interceptMemoryOperations(text){
   let updated = false, found = false;
-  const visible = String(text || "").replace(/```memory_operation\s*([\s\S]*?)```/gi, (block, json) => {
-    try{
-      const operation = JSON.parse(String(json || "").trim());
+  const fencePattern = /```[ \t]*([a-zA-Z0-9_-]*)[ \t]*\r?\n?([\s\S]*?)```/g;
+  const visible = String(text || "").replace(fencePattern, (block, language, payload) => {
+    const normalizedLanguage = String(language || "").toLowerCase().replace(/-/g, "_");
+    const explicitlyMemory = normalizedLanguage === "memory_operation" || normalizedLanguage === "memoryoperation" || normalizedLanguage === "memory";
+    if (!explicitlyMemory && normalizedLanguage !== "json" && normalizedLanguage !== "") return block;
+    const operations = parseMemoryOperationPayload(payload);
+    if (!operations){
+      if (!explicitlyMemory) return block;
       found = true;
+      console.error("invalid memory_operation", payload);
+      renderMemoryOperation({ action:"parse" }, false);
+      return "";
+    }
+    found = true;
+    operations.forEach(operation => {
       const succeeded = applyMemoryOperation(operation, { notify:false });
       renderMemoryOperation(operation, succeeded);
       if (succeeded) updated = true;
-      return "";
-    }catch(e){
-      console.error("invalid memory_operation", e);
-      return block;
-    }
+    });
+    return "";
   }).trim();
   if (updated) showToast("Memory updated");
   if (found) scheduleRender({ stickToBottom:nearBottom() });
   return visible;
 }
 function hideMemoryOperationsWhileStreaming(text){
-  return String(text || "").replace(/```memory_operation\s*[\s\S]*?(?:```|$)/gi, "").trimEnd();
+  return String(text || "")
+    .replace(/```[ \t]*(?:memory[_-]?operation|memoryoperation|memory)[ \t]*[\s\S]*?(?:```|$)/gi, "")
+    .replace(/```[ \t]*json[ \t]*[\s\S]*?(?:```|$)/gi, "")
+    .trimEnd();
 }
 function hideCallMarkersWhileStreaming(text){
   return String(text || "")
@@ -8188,7 +8222,7 @@ You can manage the client-side memory archive by emitting one fenced code block 
 \`\`\`memory_operation
 {"action":"add"|"edit"|"delete","id":number,"content":"text"}
 \`\`\`
-For edit and delete, use an existing record ID exactly. For add, omit id or choose an unused positive ID. Content is required for add/edit and ignored for delete. The app executes the operation and hides the code block from chat. Use one operation block at a time.`;
+For edit and delete, use an existing record ID exactly. For add, omit id or choose an unused positive ID. Content is required for add/edit and ignored for delete. Always use the exact memory_operation fence (not a generic json fence), put only valid JSON inside it, and do not describe the operation in a separate code block. The app executes the operation and hides the code block from chat. You may submit one object or an array of operations.`;
   const voiceCallProtocol = `## Voice Call Controls
 The prefix [voice call] on a user message is metadata indicating spoken input. Never repeat or quote [voice call] or [voicecall] in your response. If you choose to end an active voice call, emit [hangup] exactly once; the client will hide it and close the call.`;
   const hannesStickers = (STICKER_CATALOGUE.hannes || []).map(filename => `[sticker:hannes/${filename}]`).join(", ");
