@@ -2226,9 +2226,22 @@
     -webkit-user-select:none !important; user-select:none !important;
     -webkit-touch-callout:none !important;
   }
-  textarea, input, .composer, .composer *{
+  textarea, input{
     -webkit-user-select:text !important; user-select:text !important;
     -webkit-touch-callout:default !important;
+  }
+  .composer, .composer *{
+    -webkit-user-select:none !important; user-select:none !important;
+    -webkit-touch-callout:none !important;
+  }
+  .composer textarea{
+    -webkit-user-select:text !important; user-select:text !important;
+    -webkit-touch-callout:default !important;
+  }
+  .composer button, .composer button *, .composer svg, .composer svg *{
+    -webkit-user-drag:none;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
   }
 
   .msg-menu{ position:fixed; inset:0; z-index:250; opacity:0; pointer-events:none; }
@@ -7867,6 +7880,23 @@ inputEl.addEventListener("beforeinput", (e) => {
 });
 inputEl.addEventListener("focus", () => setTimeout(scrollToBottom, 60));
 sendBtn.addEventListener("click", () => activeGenerationController ? stopActiveGeneration() : doSend());
+
+// iOS may still dispatch selection/drag events on inline SVG despite CSS.
+// Keep native selection inside the textarea, but never let composer controls
+// create selection handles that can trap Safari's event loop.
+["selectstart", "dragstart"].forEach(type => {
+  document.addEventListener(type, event => {
+    if (event.target.closest && event.target.closest(".composer button")) event.preventDefault();
+  });
+});
+document.addEventListener("contextmenu", event => {
+  if (event.target.closest && event.target.closest(".composer button")) event.preventDefault();
+});
+document.addEventListener("pointerdown", event => {
+  if (!event.target.closest || !event.target.closest(".composer button")) return;
+  const selection = window.getSelection && window.getSelection();
+  if (selection && selection.type === "Range") selection.removeAllRanges();
+}, { passive:true });
 
 function setStickerPickerOpen(open){
   if (!stickerPicker) return;
