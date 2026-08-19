@@ -1687,7 +1687,7 @@
   .music-no-lyrics{ padding:60px 20px; text-align:center; color:#5d5651; font:13px/1.6 "Cormorant Garamond",Georgia,serif; }
 
   /* persistent player between chat header and messages */
-  .chat-music-dock{ --dock-paper:#e8e0d4; --dock-dim:#81776f; --dock-accent:#c4956a; position:relative; z-index:9; flex:none; margin:0; color:var(--dock-paper); background:rgba(12,10,9,.975); border-bottom:1px solid rgba(196,149,106,.18); transition:height .34s var(--ease-soft); overflow:hidden; contain:layout paint; }
+  .chat-music-dock{ --dock-paper:#e8e0d4; --dock-dim:#81776f; --dock-accent:#c4956a; --music-accent:#c4956a; position:relative; z-index:9; flex:none; margin:0; color:var(--dock-paper); background:rgba(12,10,9,.975); border-bottom:1px solid rgba(196,149,106,.18); transition:height .34s var(--ease-soft); overflow:hidden; contain:layout paint; }
   .chat-music-dock.hidden{ display:none; }
   .chat-music-compact{ height:52px; display:grid; grid-template-columns:38px minmax(0,1fr) 38px; align-items:center; gap:8px; padding:5px 13px; }
   .chat-music-expand{ min-width:0; align-self:stretch; border:0; padding:0 4px; color:inherit; background:transparent; text-align:left; cursor:pointer; }
@@ -1701,6 +1701,7 @@
   .chat-music-dock.expanded .chat-music-expanded{ display:flex; }
   .chat-music-dock.expanded .chat-music-compact{ display:none; }
   .chat-music-dock.expanded{ height:min(34vh,300px); }
+  .chat-music-dock.expanded.selecting{ height:min(40vh,350px); }
   .chat-music-dock:not(.expanded){ height:52px; }
   .chat-music-drawer-head{ flex:none; display:grid; grid-template-columns:38px minmax(0,1fr) 38px; align-items:center; padding:3px 13px 4px; }
   .chat-music-drawer-title{ min-width:0; text-align:center; }
@@ -1737,7 +1738,7 @@
   .music-selection-send,.music-selection-cancel{ flex:none; border:0; border-radius:999px; padding:7px 10px; color:#17120e; background:var(--music-accent); font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }
   .music-selection-cancel{ width:27px; padding:7px 0; color:#8f847b; background:#25201c; }
   .music-selection-send:disabled{ opacity:.38; }
-  .chat-music-controls .music-selection-bar{ bottom:calc(100% + 5px); left:8px; right:8px; }
+  .chat-music-controls .music-selection-bar{ bottom:calc(100% + 7px); left:8px; right:8px; }
   .music-lyrics.select-mode .lyric-line,.chat-music-lyrics.select-mode .lyric-line{ cursor:pointer; }
   .music-lyrics.select-mode .lyric-line.selected,.chat-music-lyrics.select-mode .lyric-line.selected{ box-shadow:inset 2px 0 var(--music-accent); background:linear-gradient(90deg,rgba(196,149,106,.1),transparent 72%); }
 
@@ -3588,7 +3589,7 @@ function musicWriteSongCache(song){
 function musicIsAnnotationWriteUrl(value){
   try{
     const url = new URL(String(value || ""));
-    return url.origin === MUSIC_API && url.pathname.replace(/\/+$/, "") === "/annotate";
+    return url.origin === MUSIC_API && /annotat/i.test(url.pathname);
   }catch(_){ return false; }
 }
 async function musicRefreshCurrentAnnotations(){
@@ -3604,6 +3605,10 @@ async function musicRefreshCurrentAnnotations(){
   }catch(error){
     console.warn("Couldn't refresh Marginalia annotations",error);
   }
+}
+function musicScheduleAnnotationRefresh(){
+  void musicRefreshCurrentAnnotations();
+  [500,1400].forEach(delay => setTimeout(() => { void musicRefreshCurrentAnnotations(); },delay));
 }
 function musicDeleteSongCache(id){
   try{ localStorage.removeItem(`${MUSIC_SONG_CACHE_PREFIX}${id}`); }catch(_){ }
@@ -3802,6 +3807,7 @@ function musicApplySelectionUi(){
     root.querySelectorAll(".lyric-line").forEach(line => line.classList.toggle("selected",musicSelectedLines.has(Number(line.dataset.line))));
   });
   document.querySelectorAll("[data-music-mode]").forEach(button => button.classList.toggle("active",button.dataset.musicMode === musicSelectionMode));
+  chatMusicDock?.classList.toggle("selecting",!!musicSelectionMode);
   document.querySelectorAll("[data-music-selection-bar]").forEach(bar => {
     bar.classList.toggle("open",!!musicSelectionMode);
     const input = bar.querySelector("[data-music-annotation-input]");
@@ -9655,7 +9661,7 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
       outboundMessages.push({ role:"assistant", content:streamed.contentBlocks });
       const executions = await Promise.all(streamed.toolUses.map(toolUse => executeFetchTool(toolUse, generationController.signal)));
       if (executions.some(execution => !execution.error && musicIsAnnotationWriteUrl(execution.url))){
-        await musicRefreshCurrentAnnotations();
+        musicScheduleAnnotationRefresh();
       }
       executions.forEach(renderToolExecution);
       scheduleRender({ stickToBottom:nearBottom() });
