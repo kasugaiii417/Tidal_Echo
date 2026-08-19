@@ -1716,9 +1716,11 @@
   .chat-music-controls{ position:relative; z-index:2; flex:none; padding:5px 18px 9px; background:#0c0a09; box-shadow:0 -10px 18px rgba(12,10,9,.94); }
   .chat-music-drawer-play{ width:32px; height:32px; margin:3px auto 0; display:grid; place-items:center; border:0; border-radius:50%; color:#17120e; background:var(--dock-accent); }
   .chat-music-drawer-play svg{ width:15px; height:15px; }
-  .chat-music-transport{ display:flex; align-items:center; justify-content:center; gap:12px; margin-top:3px; }
+  .chat-music-transport{ position:relative; width:132px; height:32px; display:flex; align-items:center; justify-content:center; margin:3px auto 0; }
   .chat-music-skip{ width:30px; height:30px; display:grid; place-items:center; border:0; padding:0; color:var(--dock-paper); background:transparent; }
   .chat-music-skip svg{ width:19px; height:19px; }
+  .chat-music-skip:first-child{ position:absolute; left:0; top:1px; }
+  .chat-music-skip:last-child{ position:absolute; right:0; top:1px; }
   .chat-music-progress{ width:100%; height:12px; appearance:none; -webkit-appearance:none; background:transparent; }
   .chat-music-progress::-webkit-slider-runnable-track{ height:2px; border-radius:2px; background:linear-gradient(to right,var(--dock-accent) 0 var(--music-progress,0%),#3b342f var(--music-progress,0%) 100%); }
   .chat-music-progress::-webkit-slider-thumb{ width:7px; height:7px; margin-top:-2.5px; border:0; border-radius:50%; background:var(--dock-paper); -webkit-appearance:none; }
@@ -1731,9 +1733,11 @@
   .music-selection-bar.open{ transform:none; opacity:1; pointer-events:auto; }
   .music-selection-bar input{ min-width:0; flex:1; border:0; border-bottom:1px solid rgba(196,149,106,.24); border-radius:0; outline:0; padding:6px 2px; color:#e8e0d4; background:transparent; font:400 13px/1.35 "Cormorant Garamond",Georgia,serif; }
   .music-selection-bar input::placeholder{ color:#6f665f; }
+  .music-selection-bar [data-music-selection-label]{ min-width:0; flex:1; white-space:nowrap; }
   .music-selection-send,.music-selection-cancel{ flex:none; border:0; border-radius:999px; padding:7px 10px; color:#17120e; background:var(--music-accent); font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }
   .music-selection-cancel{ width:27px; padding:7px 0; color:#8f847b; background:#25201c; }
   .music-selection-send:disabled{ opacity:.38; }
+  .chat-music-controls .music-selection-bar{ bottom:calc(100% + 5px); left:8px; right:8px; }
   .music-lyrics.select-mode .lyric-line,.chat-music-lyrics.select-mode .lyric-line{ cursor:pointer; }
   .music-lyrics.select-mode .lyric-line.selected,.chat-music-lyrics.select-mode .lyric-line.selected{ box-shadow:inset 2px 0 var(--music-accent); background:linear-gradient(90deg,rgba(196,149,106,.1),transparent 72%); }
 
@@ -3781,7 +3785,7 @@ function musicApplySelectionUi(){
     const send = bar.querySelector("[data-music-selection-send]");
     const label = bar.querySelector("[data-music-selection-label]");
     if (input) input.hidden = musicSelectionMode !== "annotate";
-    if (label) label.textContent = musicSelectionMode === "annotate" ? (musicSelectedLines.size ? "Add a margin note" : "Select one lyric") : `${musicSelectedLines.size || "Select"} lyric${musicSelectedLines.size === 1 ? "" : "s"}`;
+    if (label){ label.hidden = musicSelectionMode === "annotate"; label.textContent = `${musicSelectedLines.size || "Select"} lyric${musicSelectedLines.size === 1 ? "" : "s"}`; }
     if (send){ send.textContent = musicSelectionMode === "annotate" ? "Save" : "Send"; send.disabled = !musicSelectedLines.size || (musicSelectionMode === "annotate" && !String(input?.value || "").trim()); }
   });
 }
