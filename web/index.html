@@ -1679,7 +1679,7 @@
   .music-no-lyrics{ padding:60px 20px; text-align:center; color:#5d5651; font:13px/1.6 "Cormorant Garamond",Georgia,serif; }
 
   /* persistent player between chat header and messages */
-  .chat-music-dock{ --dock-paper:#e8e0d4; --dock-dim:#81776f; --dock-accent:#c4956a; position:relative; z-index:9; flex:none; margin:0; color:var(--dock-paper); background:rgba(12,10,9,.94); border-bottom:1px solid rgba(196,149,106,.18); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); transition:height .34s var(--ease-soft); overflow:hidden; }
+  .chat-music-dock{ --dock-paper:#e8e0d4; --dock-dim:#81776f; --dock-accent:#c4956a; position:relative; z-index:9; flex:none; margin:0; color:var(--dock-paper); background:rgba(12,10,9,.975); border-bottom:1px solid rgba(196,149,106,.18); transition:height .34s var(--ease-soft); overflow:hidden; contain:layout paint; }
   .chat-music-dock.hidden{ display:none; }
   .chat-music-compact{ height:52px; display:grid; grid-template-columns:38px minmax(0,1fr) 38px; align-items:center; gap:8px; padding:5px 13px; }
   .chat-music-expand{ min-width:0; align-self:stretch; border:0; padding:0 4px; color:inherit; background:transparent; text-align:left; cursor:pointer; }
@@ -1699,13 +1699,13 @@
   .chat-music-drawer-title strong,.chat-music-drawer-title span{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .chat-music-drawer-title strong{ font:500 15px/1.15 "Cormorant Garamond",Georgia,serif; }
   .chat-music-drawer-title span{ color:var(--dock-dim); font-size:9px; }
-  .chat-music-lyrics{ position:relative; flex:1; min-height:0; overflow-y:auto; padding:5px 21px 10px 31px; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+  .chat-music-lyrics{ position:relative; z-index:1; flex:1; min-height:0; overflow-x:hidden; overflow-y:auto; padding:8px 21px 14px 31px; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
   .chat-music-lyrics .lyric-line{ padding-top:7px; padding-bottom:7px; color:#91867e; font-size:16px; line-height:1.6; }
   .chat-music-lyrics .lyric-edge-spacer{ height:30%; min-height:36px; }
   .chat-music-lyrics .lyric-edge-spacer:last-child{ height:70%; }
   .chat-music-lyrics .lyric-line.current{ color:var(--dock-paper); font-size:22px; line-height:1.42; }
   .chat-music-lyrics .lyric-note{ color:#b1a59a; }
-  .chat-music-controls{ flex:none; padding:4px 18px 9px; }
+  .chat-music-controls{ position:relative; z-index:2; flex:none; padding:5px 18px 9px; background:#0c0a09; box-shadow:0 -10px 18px rgba(12,10,9,.94); }
   .chat-music-drawer-play{ width:32px; height:32px; margin:3px auto 0; display:grid; place-items:center; border:0; border-radius:50%; color:#17120e; background:var(--dock-accent); }
   .chat-music-drawer-play svg{ width:15px; height:15px; }
   .chat-music-progress{ width:100%; height:12px; appearance:none; -webkit-appearance:none; background:transparent; }
@@ -3637,10 +3637,14 @@ function closeMusicPage(){
   openMenu();
   musicPanel.classList.remove("open");
   clearTimeout(musicCloseTimer);
-  musicCloseTimer = setTimeout(() => musicPanel.classList.add("hidden"), 400);
+  musicCloseTimer = setTimeout(() => {
+    musicPanel.classList.add("hidden");
+    if (!musicNeedsRealtimeSync()) musicStopSyncLoop();
+  }, 400);
 }
 function musicBackToLibrary(){
   musicShowView(musicLibraryView);
+  if (!musicNeedsRealtimeSync()) musicStopSyncLoop();
 }
 function musicAnnotationHtml(note){
   return `<div class="lyric-note">${escapeHtml(note.text || "").replace(/\n/g,"<br>")}<span class="lyric-note-meta">${escapeHtml(note.author || "Unknown")} · ${escapeHtml(musicRelativeTime(note.timestamp))}</span></div>`;
@@ -3659,7 +3663,11 @@ function musicLyricsMarkup(){
 }
 function musicRenderLyrics(){
   const markup = musicLyricsMarkup();
-  [musicLyrics,chatMusicLyrics].forEach(root => { if (root) root.innerHTML = markup; });
+  if (musicLyrics && musicPlayerView?.offsetParent !== null) musicLyrics.innerHTML = markup;
+  if (chatMusicLyrics){
+    if (chatMusicDock?.classList.contains("expanded")) chatMusicLyrics.innerHTML = markup;
+    else chatMusicLyrics.replaceChildren();
+  }
   musicUpdateActiveLyric(true);
   if (musicEditingLine >= 0) requestAnimationFrame(() => {
     const visibleRoot = [musicLyrics,chatMusicLyrics].find(root => root && root.offsetParent !== null);
@@ -3692,7 +3700,10 @@ function musicUpdateActiveLyric(force = false){
         musicAutoScrolling = true;
         const rootRect = root.getBoundingClientRect(), lineRect = current.getBoundingClientRect();
         const anchor = root === chatMusicLyrics ? .3 : .29;
-        const targetTop = Math.max(0,root.scrollTop + lineRect.top - rootRect.top + lineRect.height / 2 - root.clientHeight * anchor);
+        const safeTop = root === chatMusicLyrics ? 9 : 14;
+        const idealLineTop = root.clientHeight * anchor - lineRect.height / 2;
+        const visibleLineTop = Math.max(safeTop,Math.min(idealLineTop,root.clientHeight - lineRect.height - safeTop));
+        const targetTop = Math.max(0,root.scrollTop + lineRect.top - rootRect.top - visibleLineTop);
         const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
         if (force || reduceMotion) root.scrollTop = targetTop;
         else root.scrollTo({ top:targetTop, behavior:"smooth" });
@@ -3718,13 +3729,19 @@ function musicStopPlayback(){
 function musicSyncPlaybackUi(){
   const duration = musicAudio.duration || 0, ratio = duration ? musicAudio.currentTime / duration : 0;
   const value = Math.round(ratio * 1000), percent = `${ratio * 100}%`, current = musicFormatTime(musicAudio.currentTime);
-  [musicProgress,chatMusicProgress].forEach(progress => { if (!progress) return; progress.value = value; progress.style.setProperty("--music-progress",percent); });
-  musicCurrentTime.textContent = current; chatMusicCurrent.textContent = current;
-  musicUpdateActiveLyric();
+  const fullVisible = musicPlayerView?.offsetParent !== null;
+  const drawerVisible = !!(chatMusicDock?.classList.contains("expanded") && chatMusicDock.offsetParent !== null);
+  if (fullVisible){ musicProgress.value = value; musicProgress.style.setProperty("--music-progress",percent); musicCurrentTime.textContent = current; }
+  if (drawerVisible){ chatMusicProgress.value = value; chatMusicProgress.style.setProperty("--music-progress",percent); chatMusicCurrent.textContent = current; }
+  if (fullVisible || drawerVisible) musicUpdateActiveLyric();
+}
+function musicNeedsRealtimeSync(){
+  return musicPlayerView?.offsetParent !== null || !!(chatMusicDock?.classList.contains("expanded") && chatMusicDock.offsetParent !== null);
 }
 function musicStartSyncLoop(){
   if (musicPlaybackRaf) cancelAnimationFrame(musicPlaybackRaf);
   const frame = () => {
+    if (!musicNeedsRealtimeSync()){ musicPlaybackRaf = null; return; }
     musicSyncPlaybackUi();
     musicPlaybackRaf = musicAudio.paused ? null : requestAnimationFrame(frame);
   };
@@ -3823,7 +3840,7 @@ if (musicAudio){
   musicAudio.addEventListener("play", () => { syncPlayButtons(false); musicStartSyncLoop(); });
   musicAudio.addEventListener("pause", () => { syncPlayButtons(true); musicStopSyncLoop(); });
   musicAudio.addEventListener("loadedmetadata", () => { const total = musicFormatTime(musicAudio.duration); musicTotalTime.textContent = total; chatMusicTotal.textContent = total; });
-  musicAudio.addEventListener("timeupdate", () => { if (musicAudio.paused || document.hidden) musicSyncPlaybackUi(); });
+  musicAudio.addEventListener("timeupdate", () => { if (!musicPlaybackRaf) musicSyncPlaybackUi(); });
   musicAudio.addEventListener("ended", () => syncPlayButtons(true));
   musicAudio.addEventListener("error", () => { musicStopSyncLoop(); syncPlayButtons(true); });
 }
@@ -3832,8 +3849,8 @@ if (chatMusicProgress) chatMusicProgress.addEventListener("input", () => { if (m
 if (chatMusicPlay) chatMusicPlay.addEventListener("click", () => { void musicTogglePlayback(); });
 if (chatMusicDrawerPlay) chatMusicDrawerPlay.addEventListener("click", () => { void musicTogglePlayback(); });
 $("#chatMusicStop")?.addEventListener("click", musicStopPlayback);
-$("#chatMusicExpand")?.addEventListener("click", () => { chatMusicDock.classList.add("expanded"); musicRenderLyrics(); });
-$("#chatMusicCollapse")?.addEventListener("click", () => chatMusicDock.classList.remove("expanded"));
+$("#chatMusicExpand")?.addEventListener("click", () => { chatMusicDock.classList.add("expanded"); musicRenderLyrics(); if (!musicAudio.paused) musicStartSyncLoop(); });
+$("#chatMusicCollapse")?.addEventListener("click", () => { chatMusicDock.classList.remove("expanded"); chatMusicLyrics?.replaceChildren(); if (!musicNeedsRealtimeSync()) musicStopSyncLoop(); });
 function bindMusicLyricRoot(root){
   if (!root) return;
   const pauseFollow = () => {
@@ -8758,8 +8775,7 @@ function imageToJpeg(file){
     img.src = url;
   });
 }
-async function sendOneFile(file, caption = ""){
-  ensureAudio();
+async function prepareOutgoingFile(file){
   const image = isImageFile(file);
   let blob = file, name = file.name || (image ? "image" : "file"), mime = file.type || "";
   let imgW = 0, imgH = 0;
@@ -8769,14 +8785,28 @@ async function sendOneFile(file, caption = ""){
       if (conv){ blob = conv.blob; name = conv.name; mime = "image/jpeg"; imgW = conv.width || 0; imgH = conv.height || 0; }
     }catch(_){}
   }
-  if (blob.size > ATT_MAX){ showToast("文件超过 10MB，发不了"); return; }
+  if (blob.size > ATT_MAX) return null;
   const kind = image ? "image" : "file";
   const localUrl = image ? URL.createObjectURL(blob) : "";
+  return { blob, name, mime, kind, width:imgW, height:imgH, localUrl };
+}
+async function sendFiles(files, caption = ""){
+  ensureAudio();
+  const prepared = [];
+  for (const file of files){
+    const item = await prepareOutgoingFile(file);
+    if (item) prepared.push(item);
+    else showToast(`${file.name || "文件"} 超过 10MB，已跳过`);
+  }
+  if (!prepared.length) return false;
   const optimisticTs = Date.now();
   const tempKey = msgKey(localMessageId());
-  const att0 = { url: "", localUrl: localUrl, name: name, size: blob.size, mime: mime, kind: kind, width: imgW, height: imgH, uploading: true };
+  const optimisticAttachments = prepared.map(item => ({
+    url:"", localUrl:item.localUrl, name:item.name, size:item.blob.size, mime:item.mime,
+    kind:item.kind, width:item.width, height:item.height, uploading:true
+  }));
   const currentSid = effectiveApiSession();
-  const optimisticMeta = { attachments: [att0] };
+  const optimisticMeta = { attachments:optimisticAttachments };
   if (currentSid) optimisticMeta.api_session = currentSid;
   const optimistic = { id: tempKey, ts: new Date(optimisticTs).toISOString(), from: "human", kind: "user", text: caption, meta: optimisticMeta, status: "sending" };
   seen.add(tempKey);
@@ -8785,12 +8815,15 @@ async function sendOneFile(file, caption = ""){
   playSendSound();
   scheduleRender({ stickToBottom: true });
   try{
-    const up = await apiUpload(blob, name, mime);
-    if (localUrl && up && up.url) localPreview.set(up.url, localUrl);
-    const finalAtt = { url: up.url, name: up.name, size: up.size, mime: up.mime, kind: up.kind, width: imgW, height: imgH };
+    const finalAttachments = [];
+    for (const item of prepared){
+      const up = await apiUpload(item.blob,item.name,item.mime);
+      if (item.localUrl && up && up.url) localPreview.set(up.url,item.localUrl);
+      finalAttachments.push({ url:up.url, name:up.name, size:up.size, mime:up.mime, kind:up.kind, width:item.width, height:item.height });
+    }
     rememberPendingOutgoing(tempKey, caption, optimisticTs);
-    const { id } = await apiSend(caption, [finalAtt], Number(tempKey));
-    const finalMeta = { attachments: [finalAtt] };
+    const { id } = await apiSend(caption,finalAttachments,Number(tempKey));
+    const finalMeta = { attachments:finalAttachments };
     if (currentSid) finalMeta.api_session = currentSid;
     confirmOptimistic(tempKey, msgKey(id), { id: id, ts: optimistic.ts, from: "human", kind: "user", text: caption, meta: finalMeta, status: "sent" });
     dropPendingOutgoing(tempKey);
@@ -8798,19 +8831,18 @@ async function sendOneFile(file, caption = ""){
     dropPendingOutgoing(tempKey);
     if (String(err.message) === "401") return;
     if (String(err.message) === "413") showToast("文件太大（上限 10MB）");
-    setMessage({ ...optimistic, meta: { attachments: [{ ...att0, uploading: false, failed: true }] }, status: "failed" });
+    setMessage({ ...optimistic, meta:{ ...optimisticMeta, attachments:optimisticAttachments.map(att => ({ ...att, uploading:false, failed:true })) }, status:"failed" });
   }
+  return true;
 }
 async function handleFiles(list){
   const files = Array.from(list || []);
   if (!files.length) return;
   const caption = inputEl.value.trim();
-  if (caption){
+  const sent = await sendFiles(files,caption);
+  if (sent && caption){
     inputEl.value = "";
     resizeComposerInput();
-  }
-  for (let index = 0; index < files.length; index++){
-    await sendOneFile(files[index], index === 0 ? caption : "");
   }
 }
 if (clipBtn && clipInput){
