@@ -2806,7 +2806,7 @@
       <div class="music-add-scroll"><form class="music-add-form" id="musicAddForm"><h3>Leave something<br>on the shelf.</h3><p>Pass a song across the room.</p>
         <label class="music-field">Artist<input id="musicArtist" name="artist" type="text" autocomplete="off" required></label>
         <label class="music-field">Title<input id="musicTitle" name="title" type="text" autocomplete="off" required></label>
-        <label class="music-field">MP3 file<span class="music-file-label"><span id="musicFileName">choose an audio file</span><span>browse</span></span><input class="hidden" id="musicFile" name="mp3_file" type="file" accept="audio/mpeg,audio/mp3,.mp3" required></label>
+        <label class="music-field">MP3 file<span class="music-file-label"><span id="musicFileName">choose an audio file</span><span>browse</span></span><input class="hidden" id="musicFile" name="mp3" type="file" accept="audio/mpeg,audio/mp3,.mp3" required></label>
         <div class="music-field">Added by<div class="music-by-toggle" id="musicAddedBy"><button class="active" type="button" data-author="Kitty">Kitty</button><button type="button" data-author="Hannes">Hannes</button></div></div>
         <button class="music-upload-submit" id="musicUploadSubmit" type="submit">ADD TO LIBRARY</button><div class="music-upload-status" id="musicUploadStatus"></div>
       </form></div>
@@ -3807,11 +3807,7 @@ async function musicDeleteSong(id){
   const card = Array.from(musicGrid?.querySelectorAll("[data-song-id]") || []).find(el => String(el.dataset.songId) === String(id));
   card?.classList.add("deleting");
   try{
-    const response = await fetch(`${MUSIC_API}/delete`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", Accept:"application/json" },
-      body:JSON.stringify({ id:song.id })
-    });
+    const response = await fetch(`${MUSIC_API}/delete?id=${encodeURIComponent(song.id)}`);
     if (!response.ok) throw new Error(`Delete ${response.status}: ${(await response.text().catch(() => "")).slice(0,180)}`);
     musicSongs = musicSongs.filter(item => String(item.id) !== String(id));
     musicWriteLibraryCache(musicSongs); musicDeleteSongCache(id);
@@ -3954,7 +3950,7 @@ $("#musicAddedBy")?.addEventListener("click", event => { const button = event.ta
 $("#musicAddedBy")?.querySelectorAll("button").forEach(button => button.classList.toggle("active",button.dataset.author === musicAuthor));
 if (musicAddForm) musicAddForm.addEventListener("submit", async event => {
   event.preventDefault(); const file = musicFile.files?.[0]; if (!file) return;
-  const form = new FormData(); form.append("artist",$("#musicArtist").value.trim()); form.append("title",$("#musicTitle").value.trim()); form.append("addedBy",musicAuthor); form.append("mp3_file",file,file.name);
+  const form = new FormData(); form.append("artist",$("#musicArtist").value.trim()); form.append("title",$("#musicTitle").value.trim()); form.append("added_by",musicAuthor); form.append("mp3",file);
   musicUploadSubmit.disabled = true; musicUploadStatus.textContent = "uploading… keep this page open";
   try{
     const response = await fetch(`${MUSIC_API}/add`, { method:"POST", body:form });
