@@ -1642,7 +1642,7 @@
   .music-player-heading strong,.music-player-heading span{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .music-player-heading strong{ color:var(--music-paper); font:500 18px/1.2 "Cormorant Garamond",Georgia,serif; }
   .music-player-heading span{ margin-top:2px; color:var(--music-dim); font-size:10px; }
-  .music-controls{ flex:none; padding:10px 23px 7px; }
+  .music-controls{ position:relative; flex:none; padding:10px 23px 7px; }
   .music-control-row{ display:flex; flex-direction:column; align-items:center; gap:8px; }
   .music-play{ width:38px; height:38px; display:grid; place-items:center; border:0; border-radius:50%; color:#17120e; background:var(--music-accent); cursor:pointer; }
   .music-play svg{ width:18px; height:18px; }
@@ -1663,15 +1663,19 @@
   .lyric-line.past{ color:#403b38; }
   .lyric-line.current{ color:var(--music-paper); font-size:27px; line-height:1.42; }
   .lyric-line.future{ color:#8c827a; }
+  .lyric-main{ position:relative; }
   .lyric-line-text{ display:block; cursor:pointer; }
-  .lyric-dot{ position:absolute; left:-13px; top:17px; width:6px; height:6px; padding:0; border:0; border-radius:50%; background:var(--music-accent); box-shadow:0 0 0 3px rgba(196,149,106,.08); cursor:pointer; }
-  .lyric-line.current .lyric-dot{ animation:music-dot-pulse 2.8s ease-in-out infinite; }
+  .lyric-dot{ position:absolute; left:-22px; top:50%; width:22px; height:32px; padding:0; border:0; background:transparent; transform:translateY(-50%); cursor:pointer; }
+  .lyric-dot::before{ content:""; position:absolute; left:50%; top:50%; width:9px; height:9px; border-radius:50%; background:var(--music-accent); box-shadow:0 0 0 4px rgba(196,149,106,.09); transform:translate(-50%,-50%); }
+  .lyric-line.current .lyric-dot::before{ animation:music-dot-pulse 2.8s ease-in-out infinite; }
   @keyframes music-dot-pulse{ 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
-  .lyric-annotations{ display:none; padding:8px 0 2px 12px; }
-  .lyric-line.annotations-open .lyric-annotations{ display:block; animation:music-note-in .2s ease both; }
-  @keyframes music-note-in{ from{ opacity:0; transform:translateY(-3px); } }
-  .lyric-note{ position:relative; margin:0 0 10px; padding-left:11px; border-left:1px solid rgba(196,149,106,.28); color:#a79c92; font:12px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; user-select:text; -webkit-user-select:text; }
-  .lyric-note-meta{ display:block; margin-top:3px; color:#5f5853; font:8.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.04em; }
+  .lyric-annotations{ display:none; padding:10px 0 2px; }
+  .lyric-line.annotations-open .lyric-annotations{ display:flex; flex-direction:column; gap:7px; }
+  @keyframes music-note-in{ from{ opacity:0; transform:translateY(-5px); } to{ opacity:1; transform:none; } }
+  .lyric-note{ width:fit-content; max-width:75%; margin:0; padding:8px 11px 7px; border-radius:12px; color:#e8e0d4; background:rgba(196,149,106,.1); font:400 14px/1.45 "Cormorant Garamond",Georgia,serif; user-select:text; -webkit-user-select:text; animation:music-note-in .25s ease both; }
+  .lyric-note.kitty{ align-self:flex-end; background:rgba(232,224,212,.08); }
+  .lyric-note.hannes{ align-self:flex-start; background:rgba(196,149,106,.1); }
+  .lyric-note-meta{ display:block; margin-top:4px; color:#746b64; font:8px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.04em; }
   .lyric-editor{ display:grid; grid-template-columns:1fr auto; gap:7px; margin:7px 0 3px 10px; padding:9px 10px; border-radius:5px; background:#151311; animation:music-note-in .2s ease both; }
   .lyric-editor input{ grid-column:1/-1; min-width:0; border:0; border-bottom:1px solid #302b27; border-radius:0; outline:0; padding:4px 1px 7px; color:var(--music-paper); background:transparent; font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
   .lyric-editor input::placeholder{ color:#59524c; }
@@ -1708,7 +1712,7 @@
   .chat-music-lyrics .lyric-edge-spacer{ height:30%; min-height:36px; }
   .chat-music-lyrics .lyric-edge-spacer:last-child{ height:70%; }
   .chat-music-lyrics .lyric-line.current{ color:var(--dock-paper); font-size:22px; line-height:1.42; }
-  .chat-music-lyrics .lyric-note{ color:#b1a59a; }
+  .chat-music-lyrics .lyric-note{ color:#e8e0d4; }
   .chat-music-controls{ position:relative; z-index:2; flex:none; padding:5px 18px 9px; background:#0c0a09; box-shadow:0 -10px 18px rgba(12,10,9,.94); }
   .chat-music-drawer-play{ width:32px; height:32px; margin:3px auto 0; display:grid; place-items:center; border:0; border-radius:50%; color:#17120e; background:var(--dock-accent); }
   .chat-music-drawer-play svg{ width:15px; height:15px; }
@@ -1719,6 +1723,24 @@
   .chat-music-progress::-webkit-slider-runnable-track{ height:2px; border-radius:2px; background:linear-gradient(to right,var(--dock-accent) 0 var(--music-progress,0%),#3b342f var(--music-progress,0%) 100%); }
   .chat-music-progress::-webkit-slider-thumb{ width:7px; height:7px; margin-top:-2.5px; border:0; border-radius:50%; background:var(--dock-paper); -webkit-appearance:none; }
   .chat-music-time{ display:flex; justify-content:space-between; color:#776e67; font:8px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .music-margin-actions{ position:absolute; right:15px; bottom:8px; z-index:3; display:flex; gap:3px; }
+  .music-margin-action{ width:30px; height:30px; display:grid; place-items:center; border:0; border-radius:50%; padding:0; color:#8c7969; background:transparent; cursor:pointer; }
+  .music-margin-action svg{ width:16px; height:16px; }
+  .music-margin-action.active{ color:var(--music-accent); background:rgba(196,149,106,.1); }
+  .music-selection-bar{ position:absolute; z-index:5; left:10px; right:10px; bottom:4px; min-height:46px; display:flex; align-items:center; gap:7px; padding:7px 8px 7px 12px; border-radius:10px; color:#a69b91; background:#171411; box-shadow:0 -8px 24px rgba(0,0,0,.32); font:9px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; transform:translateY(calc(100% + 12px)); opacity:0; pointer-events:none; transition:transform .24s ease,opacity .2s ease; }
+  .music-selection-bar.open{ transform:none; opacity:1; pointer-events:auto; }
+  .music-selection-bar input{ min-width:0; flex:1; border:0; border-bottom:1px solid rgba(196,149,106,.24); border-radius:0; outline:0; padding:6px 2px; color:#e8e0d4; background:transparent; font:400 13px/1.35 "Cormorant Garamond",Georgia,serif; }
+  .music-selection-bar input::placeholder{ color:#6f665f; }
+  .music-selection-send,.music-selection-cancel{ flex:none; border:0; border-radius:999px; padding:7px 10px; color:#17120e; background:var(--music-accent); font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .music-selection-cancel{ width:27px; padding:7px 0; color:#8f847b; background:#25201c; }
+  .music-selection-send:disabled{ opacity:.38; }
+  .music-lyrics.select-mode .lyric-line,.chat-music-lyrics.select-mode .lyric-line{ cursor:pointer; }
+  .music-lyrics.select-mode .lyric-line.selected,.chat-music-lyrics.select-mode .lyric-line.selected{ box-shadow:inset 2px 0 var(--music-accent); background:linear-gradient(90deg,rgba(196,149,106,.1),transparent 72%); }
+
+  .bubble.lyric-share-layout{ border-radius:3px 13px 10px 4px; background:rgba(239,232,220,.9); box-shadow:0 8px 20px rgba(28,21,17,.1); }
+  .lyric-share-card{ position:relative; display:block; min-width:180px; padding:3px 2px 2px; }
+  .lyric-share-heading{ display:block; margin-bottom:7px; color:#766d65; font:9px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.02em; }
+  .lyric-share-lines{ display:block; color:#302a26; font:400 17px/1.5 "Cormorant Garamond",Georgia,serif; white-space:pre-wrap; }
 
   .music-add-scroll{ flex:1; overflow-y:auto; padding:32px 25px calc(env(safe-area-inset-bottom) + 35px); }
   .music-add-form{ max-width:520px; margin:0 auto; }
@@ -2495,7 +2517,7 @@
     <div class="chat-music-expanded">
       <div class="chat-music-drawer-head"><button class="chat-music-btn" id="chatMusicCollapse" type="button" aria-label="Collapse lyrics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button><div class="chat-music-drawer-title"><strong id="chatMusicDrawerTitle"></strong><span id="chatMusicDrawerArtist"></span></div><span></span></div>
       <div class="chat-music-lyrics" id="chatMusicLyrics"></div>
-      <div class="chat-music-controls"><input class="chat-music-progress" id="chatMusicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="chat-music-time"><span id="chatMusicCurrent">0:00</span><span id="chatMusicTotal">0:00</span></div><div class="chat-music-transport"><button class="chat-music-skip" id="chatMusicPrevious" type="button" aria-label="Previous song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zm3 7 10 7V5z"/></svg></button><button class="chat-music-drawer-play" id="chatMusicDrawerPlay" type="button" aria-label="Play"></button><button class="chat-music-skip" id="chatMusicNext" type="button" aria-label="Next song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM5 5v14l10-7z"/></svg></button></div></div>
+      <div class="chat-music-controls"><input class="chat-music-progress" id="chatMusicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="chat-music-time"><span id="chatMusicCurrent">0:00</span><span id="chatMusicTotal">0:00</span></div><div class="chat-music-transport"><button class="chat-music-skip" id="chatMusicPrevious" type="button" aria-label="Previous song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zm3 7 10 7V5z"/></svg></button><button class="chat-music-drawer-play" id="chatMusicDrawerPlay" type="button" aria-label="Play"></button><button class="chat-music-skip" id="chatMusicNext" type="button" aria-label="Next song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM5 5v14l10-7z"/></svg></button></div><div class="music-margin-actions"><button class="music-margin-action" type="button" data-music-mode="share" aria-label="Share lyrics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 8h4v4H7v4H5v-5a3 3 0 0 1 3-3zm9 0h4v4h-4v4h-2v-5a3 3 0 0 1 3-3z"/></svg></button><button class="music-margin-action" type="button" data-music-mode="annotate" aria-label="Annotate lyric"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4.2-1 10.5-10.5a2.1 2.1 0 0 0-3-3L5.2 16z"/><path d="M13.8 7.4l3 3"/></svg></button></div><div class="music-selection-bar" data-music-selection-bar><span data-music-selection-label>Select lyrics</span><input data-music-annotation-input placeholder="write in the margin..."><button class="music-selection-send" type="button" data-music-selection-send disabled>Send</button><button class="music-selection-cancel" type="button" data-music-selection-cancel aria-label="Cancel">×</button></div></div>
     </div>
   </section>
   <div class="session-pop" id="sessionPop" hidden>
@@ -2796,7 +2818,7 @@
     <section class="music-view music-player-view hidden" id="musicPlayerView">
       <header class="music-player-header"><button class="music-icon-btn" id="musicPlayerBack" type="button" aria-label="Back to library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button><div class="music-player-heading"><strong id="musicPlayerTitle"></strong><span id="musicPlayerArtist"></span></div><span></span></header>
       <div class="music-lyrics" id="musicLyrics"><div class="music-no-lyrics">loading lyrics…</div></div>
-      <div class="music-controls"><div class="music-control-row"><div class="music-progress-wrap"><input class="music-progress" id="musicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="music-time-row"><span id="musicCurrentTime">0:00</span><span id="musicTotalTime">0:00</span></div></div><div class="music-transport"><button class="music-skip" id="musicPrevious" type="button" aria-label="Previous song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zm3 7 10 7V5z"/></svg></button><button class="music-play" id="musicPlay" type="button" aria-label="Play"></button><button class="music-skip" id="musicNext" type="button" aria-label="Next song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM5 5v14l10-7z"/></svg></button></div></div></div>
+      <div class="music-controls"><div class="music-control-row"><div class="music-progress-wrap"><input class="music-progress" id="musicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="music-time-row"><span id="musicCurrentTime">0:00</span><span id="musicTotalTime">0:00</span></div></div><div class="music-transport"><button class="music-skip" id="musicPrevious" type="button" aria-label="Previous song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zm3 7 10 7V5z"/></svg></button><button class="music-play" id="musicPlay" type="button" aria-label="Play"></button><button class="music-skip" id="musicNext" type="button" aria-label="Next song"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM5 5v14l10-7z"/></svg></button></div></div><div class="music-margin-actions"><button class="music-margin-action" type="button" data-music-mode="share" aria-label="Share lyrics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 8h4v4H7v4H5v-5a3 3 0 0 1 3-3zm9 0h4v4h-4v4h-2v-5a3 3 0 0 1 3-3z"/></svg></button><button class="music-margin-action" type="button" data-music-mode="annotate" aria-label="Annotate lyric"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4.2-1 10.5-10.5a2.1 2.1 0 0 0-3-3L5.2 16z"/><path d="M13.8 7.4l3 3"/></svg></button></div><div class="music-selection-bar" data-music-selection-bar><span data-music-selection-label>Select lyrics</span><input data-music-annotation-input placeholder="write in the margin..."><button class="music-selection-send" type="button" data-music-selection-send disabled>Send</button><button class="music-selection-cancel" type="button" data-music-selection-cancel aria-label="Cancel">×</button></div></div>
       <div class="music-player-added" id="musicPlayerAdded"></div>
       <audio id="musicAudio" preload="metadata"></audio>
     </section>
@@ -3428,6 +3450,7 @@ function closeMenu(){
 }
 function openConversationList(){
   if (!conversationPanel) return;
+  musicCollapseDrawer();
   renderConversationList();
   clearTimeout(conversationCloseTimer);
   conversationPanel.classList.remove("hidden");
@@ -3499,6 +3522,7 @@ if (menuPanel){
 const MUSIC_API = "https://music-library.chenv354.workers.dev";
 const MUSIC_LIBRARY_CACHE_KEY = "marginalia_library_cache_v1";
 const MUSIC_SONG_CACHE_PREFIX = "marginalia_song_v1:";
+const MUSIC_LAST_SEND_KEY = "marginalia_last_message_send_v1";
 const MUSIC_FETCH_TIMEOUT = 6500;
 const musicPanel = $("#musicPanel"), musicLibraryView = $("#musicLibraryView"), musicPlayerView = $("#musicPlayerView"), musicAddView = $("#musicAddView");
 const musicGrid = $("#musicGrid"), musicCount = $("#musicCount"), musicAudio = $("#musicAudio"), musicLyrics = $("#musicLyrics");
@@ -3513,6 +3537,7 @@ let musicFollowPausedUntil = 0, musicFollowResumeTimer = null, musicAutoScrollin
 let musicPlaybackRaf = null;
 let musicLibraryRequest = null, musicAudioRetryCount = 0;
 let musicCardLongPressTimer = null, musicCardLongPressId = null, musicCardLongPressX = 0, musicCardLongPressY = 0, musicSuppressCardClickUntil = 0;
+let musicSelectionMode = null, musicSelectionAnchor = -1, musicSelectedLines = new Set();
 
 function musicDelay(milliseconds){ return new Promise(resolve => setTimeout(resolve,milliseconds)); }
 async function musicFetchJson(path, retries = 1){
@@ -3560,6 +3585,18 @@ function musicDeleteSongCache(id){
 function musicShowView(view){
   [musicLibraryView,musicPlayerView,musicAddView].forEach(el => el && el.classList.toggle("hidden", el !== view));
 }
+function musicFullPlayerVisible(){
+  return !!(musicPanel && musicPanel.classList.contains("open") && !musicPanel.classList.contains("hidden") && !musicPlayerView?.classList.contains("hidden"));
+}
+function musicDrawerVisible(){
+  return !!(chatMusicDock && chatMusicDock.classList.contains("expanded") && !chatMusicDock.classList.contains("hidden") && !appEl.classList.contains("hidden"));
+}
+function musicVisibleLyricRoots(){
+  const roots = [];
+  if (musicFullPlayerVisible() && musicLyrics) roots.push(musicLyrics);
+  if (musicDrawerVisible() && chatMusicLyrics) roots.push(chatMusicLyrics);
+  return roots;
+}
 function musicCoverUrl(id){ return `${MUSIC_API}/cover?id=${encodeURIComponent(id)}`; }
 function musicAudioUrl(id){ return `${MUSIC_API}/audio?id=${encodeURIComponent(id)}`; }
 function musicPlayIcon(paused = true){
@@ -3570,6 +3607,45 @@ function musicPlayIcon(paused = true){
 function musicFormatTime(seconds){
   const safe = Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 0;
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2,"0")}`;
+}
+function musicAnnotationTimestamp(note){
+  const raw = note && (note.timestamp || note.createdAt || note.addedAt);
+  if (typeof raw === "number") return raw < 1e12 ? raw * 1000 : raw;
+  const parsed = Date.parse(raw || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function musicContextPrefix(previousSendAt){
+  if (!musicSong || !musicAudio || musicAudio.paused || musicAudio.ended) return "";
+  const title = musicSong.title || "Untitled", artist = musicSong.artist || "Unknown artist";
+  let prefix = `[♪ Now Playing: ${title} — ${artist}, ${musicFormatTime(musicAudio.currentTime)}]`;
+  const notes = [];
+  musicLyricLines.forEach(line => (line.annotations || []).forEach(note => notes.push({ line, note })));
+  if (notes.length){
+    prefix += `\n[Marginalia — ${title}]`;
+    notes.forEach(({ line,note }) => {
+      const isNew = musicAnnotationTimestamp(note) > previousSendAt;
+      const lyric = String(note.lyric || line.text || "").replace(/\s+/g," ").trim();
+      const text = String(note.text || "").replace(/\s+/g," ").trim();
+      prefix += `\n"${lyric}" → ${note.author || "Unknown"}: ${isNew ? "[new] " : ""}${text}`;
+    });
+  }
+  return prefix;
+}
+function injectMusicContextIntoMessages(messages){
+  const now = Date.now();
+  let previousSendAt = 0;
+  try{ previousSendAt = Number(localStorage.getItem(MUSIC_LAST_SEND_KEY) || 0) || 0; }catch(_){ }
+  const prefix = musicContextPrefix(previousSendAt);
+  try{ localStorage.setItem(MUSIC_LAST_SEND_KEY,String(now)); }catch(_){ }
+  if (!prefix || !Array.isArray(messages)) return;
+  const lastUser = messages.slice().reverse().find(message => message && message.role === "user");
+  if (!lastUser) return;
+  if (typeof lastUser.content === "string") lastUser.content = `${prefix}\n\n${lastUser.content}`;
+  else if (Array.isArray(lastUser.content)){
+    const textBlock = lastUser.content.find(block => block && block.type === "text");
+    if (textBlock) textBlock.text = `${prefix}\n\n${textBlock.text || ""}`;
+    else lastUser.content.unshift({ type:"text", text:prefix });
+  }
 }
 function musicRelativeTime(value){
   const parsed = typeof value === "number" && value < 1e12 ? value * 1000 : Date.parse(value) || Number(value) || Date.now();
@@ -3594,7 +3670,10 @@ function parseMarginaliaLrc(lrc){
 function musicNormalizeAnnotations(annotations){
   const grouped = new Map();
   (Array.isArray(annotations) ? annotations : []).forEach(note => {
-    const line = Number(note && note.line);
+    let line = Number(note && note.line);
+    if ((!Number.isInteger(line) || line < 0) && note && note.lyric != null){
+      line = musicLyricLines.findIndex(item => String(item.text || "").trim() === String(note.lyric || "").trim());
+    }
     if (!Number.isInteger(line) || line < 0) return;
     if (!grouped.has(line)) grouped.set(line, []);
     grouped.get(line).push(note);
@@ -3654,11 +3733,14 @@ function closeMusicPage(){
   }, 400);
 }
 function musicBackToLibrary(){
+  musicExitSelection();
   musicShowView(musicLibraryView);
   if (!musicNeedsRealtimeSync()) musicStopSyncLoop();
 }
 function musicAnnotationHtml(note){
-  return `<div class="lyric-note">${escapeHtml(note.text || "").replace(/\n/g,"<br>")}<span class="lyric-note-meta">${escapeHtml(note.author || "Unknown")} · ${escapeHtml(musicRelativeTime(note.timestamp))}</span></div>`;
+  const author = String(note.author || "Unknown");
+  const side = author.toLowerCase() === "kitty" ? "kitty" : "hannes";
+  return `<div class="lyric-note ${side}">${escapeHtml(note.text || "").replace(/\n/g,"<br>")}<span class="lyric-note-meta">${escapeHtml(author)} · ${escapeHtml(musicRelativeTime(note.timestamp || note.createdAt || note.addedAt))}</span></div>`;
 }
 function musicEditorHtml(lineIndex){
   if (musicEditingLine !== lineIndex) return "";
@@ -3668,22 +3750,104 @@ function musicLyricsMarkup(){
   if (!musicLyricLines.length) return '<div class="music-no-lyrics">No synced lyrics were left with this song.</div>';
   const lines = musicLyricLines.map(line => {
     const notes = line.annotations || [], expanded = musicExpandedLines.has(line.index);
-    return `<div class="lyric-line${expanded ? " annotations-open" : ""}" data-line="${line.index}" data-time="${line.time}">${notes.length ? `<button class="lyric-dot" type="button" data-note-line="${line.index}" aria-label="${notes.length} annotation${notes.length === 1 ? "" : "s"}"></button>` : ""}<span class="lyric-line-text">${escapeHtml(line.text || "♪")}</span><div class="lyric-annotations">${notes.map(musicAnnotationHtml).join("")}</div>${musicEditorHtml(line.index)}</div>`;
+    return `<div class="lyric-line${expanded ? " annotations-open" : ""}" data-line="${line.index}" data-time="${line.time}"><div class="lyric-main">${notes.length ? `<button class="lyric-dot" type="button" data-note-line="${line.index}" aria-label="${notes.length} annotation${notes.length === 1 ? "" : "s"}"></button>` : ""}<span class="lyric-line-text">${escapeHtml(line.text || "♪")}</span></div><div class="lyric-annotations">${notes.map(musicAnnotationHtml).join("")}</div>${musicEditorHtml(line.index)}</div>`;
   }).join("");
   return `<div class="lyric-edge-spacer" aria-hidden="true"></div>${lines}<div class="lyric-edge-spacer" aria-hidden="true"></div>`;
 }
 function musicRenderLyrics(){
   const markup = musicLyricsMarkup();
-  if (musicLyrics && musicPlayerView?.offsetParent !== null) musicLyrics.innerHTML = markup;
+  if (musicLyrics && musicFullPlayerVisible()) musicLyrics.innerHTML = markup;
   if (chatMusicLyrics){
     if (chatMusicDock?.classList.contains("expanded")) chatMusicLyrics.innerHTML = markup;
     else chatMusicLyrics.replaceChildren();
   }
   musicUpdateActiveLyric(true);
   if (musicEditingLine >= 0) requestAnimationFrame(() => {
-    const visibleRoot = [musicLyrics,chatMusicLyrics].find(root => root && root.offsetParent !== null);
+    const visibleRoot = musicVisibleLyricRoots()[0];
     visibleRoot?.querySelector(`[data-editor-line="${musicEditingLine}"] input`)?.focus();
   });
+  musicApplySelectionUi();
+}
+function musicApplySelectionUi(){
+  [musicLyrics,chatMusicLyrics].forEach(root => {
+    if (!root) return;
+    root.classList.toggle("select-mode",!!musicSelectionMode);
+    root.querySelectorAll(".lyric-line").forEach(line => line.classList.toggle("selected",musicSelectedLines.has(Number(line.dataset.line))));
+  });
+  document.querySelectorAll("[data-music-mode]").forEach(button => button.classList.toggle("active",button.dataset.musicMode === musicSelectionMode));
+  document.querySelectorAll("[data-music-selection-bar]").forEach(bar => {
+    bar.classList.toggle("open",!!musicSelectionMode);
+    const input = bar.querySelector("[data-music-annotation-input]");
+    const send = bar.querySelector("[data-music-selection-send]");
+    const label = bar.querySelector("[data-music-selection-label]");
+    if (input) input.hidden = musicSelectionMode !== "annotate";
+    if (label) label.textContent = musicSelectionMode === "annotate" ? (musicSelectedLines.size ? "Add a margin note" : "Select one lyric") : `${musicSelectedLines.size || "Select"} lyric${musicSelectedLines.size === 1 ? "" : "s"}`;
+    if (send){ send.textContent = musicSelectionMode === "annotate" ? "Save" : "Send"; send.disabled = !musicSelectedLines.size || (musicSelectionMode === "annotate" && !String(input?.value || "").trim()); }
+  });
+}
+function musicExitSelection(){
+  musicSelectionMode = null; musicSelectionAnchor = -1; musicSelectedLines.clear();
+  document.querySelectorAll("[data-music-annotation-input]").forEach(input => { input.value = ""; });
+  musicApplySelectionUi();
+}
+function musicStartSelection(mode){
+  if (!musicSong || !musicLyricLines.length) return;
+  if (musicSelectionMode === mode){ musicExitSelection(); return; }
+  musicSelectionMode = mode; musicSelectionAnchor = -1; musicSelectedLines.clear();
+  document.querySelectorAll("[data-music-annotation-input]").forEach(input => { input.value = ""; });
+  musicApplySelectionUi();
+}
+function musicSelectLyricLine(index){
+  if (!musicSelectionMode || !musicLyricLines[index]) return;
+  if (musicSelectionMode === "annotate"){
+    musicSelectedLines = new Set([index]); musicSelectionAnchor = index;
+  }else if (musicSelectionAnchor < 0){
+    musicSelectionAnchor = index; musicSelectedLines = new Set([index]);
+  }else if (index === musicSelectionAnchor && musicSelectedLines.size === 1){
+    musicSelectionAnchor = -1; musicSelectedLines.clear();
+  }else{
+    musicSelectedLines.clear();
+    const start = Math.min(musicSelectionAnchor,index), end = Math.max(musicSelectionAnchor,index);
+    for (let line = start; line <= end; line++) musicSelectedLines.add(line);
+  }
+  musicApplySelectionUi();
+  if (musicSelectionMode === "annotate") requestAnimationFrame(() => {
+    const input = Array.from(document.querySelectorAll("[data-music-annotation-input]")).find(el => !el.hidden && el.getClientRects().length);
+    input?.focus();
+  });
+}
+async function musicSubmitSelection(){
+  if (!musicSong || !musicSelectedLines.size) return;
+  const selected = Array.from(musicSelectedLines).sort((a,b) => a - b);
+  if (musicSelectionMode === "share"){
+    const lyrics = selected.map(index => musicLyricLines[index]?.text || "").filter(Boolean).join("\n");
+    if (!lyrics) return;
+    const message = `♪ ${musicSong.title || "Untitled"} — ${musicSong.artist || "Unknown artist"}\n"${lyrics}"`;
+    musicExitSelection();
+    inputEl.value = message; inputEl.dispatchEvent(new Event("input",{ bubbles:true })); resizeComposerInput();
+    void doSend(); showToast("Lyrics sent to chat");
+    return;
+  }
+  const input = Array.from(document.querySelectorAll("[data-music-annotation-input]")).find(el => String(el.value || "").trim());
+  const text = String(input?.value || "").trim(), lineIndex = selected[0], line = musicLyricLines[lineIndex];
+  if (!text || !line) return;
+  document.querySelectorAll("[data-music-selection-send]").forEach(button => { button.disabled = true; });
+  try{
+    const response = await fetch(`${MUSIC_API}/annotate`, {
+      method:"POST", headers:{ "Content-Type":"application/json", Accept:"application/json" },
+      body:JSON.stringify({ id:musicSong.id, lyric:line.text, text, author:"Kitty" })
+    });
+    if (!response.ok) throw new Error(`Annotation ${response.status}: ${(await response.text().catch(() => "")).slice(0,160)}`);
+    const returned = await response.json().catch(() => null);
+    const note = returned?.annotation
+      ? { ...returned.annotation, line:lineIndex, lyric:returned.annotation.lyric || line.text, author:returned.annotation.author || "Kitty" }
+      : { line:lineIndex, lyric:line.text, text, author:"Kitty", timestamp:new Date().toISOString() };
+    line.annotations.push(note);
+    if (!Array.isArray(musicSong.annotations)) musicSong.annotations = [];
+    musicSong.annotations.push(note); musicWriteSongCache(musicSong);
+    musicExitSelection(); musicExpandedLines.add(lineIndex); musicRenderLyrics();
+    showToast("Annotation added");
+  }catch(error){ console.error("Annotation failed",error); showToast(error.message || "Annotation failed"); musicApplySelectionUi(); }
 }
 function musicUpdateActiveLyric(force = false){
   if (!musicLyricLines.length) return;
@@ -3697,15 +3861,14 @@ function musicUpdateActiveLyric(force = false){
   if (active < 0 && musicLyricLines.length) active = 0;
   if (!force && active === musicActiveLine) return;
   musicActiveLine = active;
-  [musicLyrics,chatMusicLyrics].forEach(root => root?.querySelectorAll(".lyric-line").forEach((el,index) => {
+  musicVisibleLyricRoots().forEach(root => root.querySelectorAll(".lyric-line").forEach((el,index) => {
       el.classList.toggle("current", index === active);
       el.classList.toggle("past", index < active);
       el.classList.toggle("future", index > active);
     })
   );
   if (active >= 0 && Date.now() >= musicFollowPausedUntil){
-    [musicLyrics,chatMusicLyrics].forEach(root => {
-      if (!root || root.offsetParent === null) return;
+    musicVisibleLyricRoots().forEach(root => {
       const current = root.querySelector(`[data-line="${active}"]`);
       if (current){
         musicAutoScrolling = true;
@@ -3734,20 +3897,27 @@ function musicSyncDock(summary){
 function musicStopPlayback(){
   musicAudio.pause();
   try{ musicAudio.currentTime = 0; }catch(_){ }
+  musicCollapseDrawer();
   chatMusicDock?.classList.add("hidden");
-  chatMusicDock?.classList.remove("expanded");
+}
+function musicCollapseDrawer(){
+  if (!chatMusicDock?.classList.contains("expanded")) return;
+  musicExitSelection();
+  chatMusicDock.classList.remove("expanded");
+  chatMusicLyrics?.replaceChildren();
+  if (!musicNeedsRealtimeSync()) musicStopSyncLoop();
 }
 function musicSyncPlaybackUi(){
   const duration = musicAudio.duration || 0, ratio = duration ? musicAudio.currentTime / duration : 0;
   const value = Math.round(ratio * 1000), percent = `${ratio * 100}%`, current = musicFormatTime(musicAudio.currentTime);
-  const fullVisible = musicPlayerView?.offsetParent !== null;
-  const drawerVisible = !!(chatMusicDock?.classList.contains("expanded") && chatMusicDock.offsetParent !== null);
+  const fullVisible = musicFullPlayerVisible();
+  const drawerVisible = musicDrawerVisible();
   if (fullVisible){ musicProgress.value = value; musicProgress.style.setProperty("--music-progress",percent); musicCurrentTime.textContent = current; }
   if (drawerVisible){ chatMusicProgress.value = value; chatMusicProgress.style.setProperty("--music-progress",percent); chatMusicCurrent.textContent = current; }
   if (fullVisible || drawerVisible) musicUpdateActiveLyric();
 }
 function musicNeedsRealtimeSync(){
-  return musicPlayerView?.offsetParent !== null || !!(chatMusicDock?.classList.contains("expanded") && chatMusicDock.offsetParent !== null);
+  return musicFullPlayerVisible() || musicDrawerVisible();
 }
 function musicStartSyncLoop(){
   if (musicPlaybackRaf) cancelAnimationFrame(musicPlaybackRaf);
@@ -3764,6 +3934,7 @@ function musicStopSyncLoop(){
   musicSyncPlaybackUi();
 }
 async function musicOpenSong(id){
+  musicExitSelection();
   const summary = musicSongs.find(song => String(song.id) === String(id)) || { id };
   const cachedSong = musicReadSongCache(id);
   musicShowView(musicPlayerView);
@@ -3919,7 +4090,17 @@ $("#chatMusicPrevious")?.addEventListener("click", () => { void musicChangeSong(
 $("#chatMusicNext")?.addEventListener("click", () => { void musicChangeSong(1); });
 $("#chatMusicStop")?.addEventListener("click", musicStopPlayback);
 $("#chatMusicExpand")?.addEventListener("click", () => { chatMusicDock.classList.add("expanded"); musicRenderLyrics(); if (!musicAudio.paused) musicStartSyncLoop(); });
-$("#chatMusicCollapse")?.addEventListener("click", () => { chatMusicDock.classList.remove("expanded"); chatMusicLyrics?.replaceChildren(); if (!musicNeedsRealtimeSync()) musicStopSyncLoop(); });
+$("#chatMusicCollapse")?.addEventListener("click", musicCollapseDrawer);
+document.querySelectorAll("[data-music-mode]").forEach(button => button.addEventListener("click", () => musicStartSelection(button.dataset.musicMode)));
+document.querySelectorAll("[data-music-selection-cancel]").forEach(button => button.addEventListener("click",musicExitSelection));
+document.querySelectorAll("[data-music-selection-send]").forEach(button => button.addEventListener("click",() => { void musicSubmitSelection(); }));
+document.querySelectorAll("[data-music-annotation-input]").forEach(input => input.addEventListener("input",() => {
+  document.querySelectorAll("[data-music-annotation-input]").forEach(peer => { if (peer !== input) peer.value = input.value; });
+  musicApplySelectionUi();
+}));
+document.querySelectorAll("[data-music-annotation-input]").forEach(input => input.addEventListener("keydown",event => {
+  if (event.key === "Enter" && !event.shiftKey){ event.preventDefault(); void musicSubmitSelection(); }
+}));
 function bindMusicLyricRoot(root){
   if (!root) return;
   const pauseFollow = () => {
@@ -3929,6 +4110,8 @@ function bindMusicLyricRoot(root){
   };
   root.addEventListener("touchstart", pauseFollow, { passive:true }); root.addEventListener("wheel", pauseFollow, { passive:true });
   root.addEventListener("click", event => {
+    const selectedLine = event.target.closest(".lyric-line");
+    if (musicSelectionMode && selectedLine){ musicSelectLyricLine(Number(selectedLine.dataset.line)); return; }
     const author = event.target.closest("[data-music-author]");
     if (author){ musicAuthor = author.dataset.musicAuthor; localStorage.setItem("marginalia_author",musicAuthor); author.parentElement.querySelectorAll("button").forEach(btn => btn.classList.toggle("active",btn === author)); return; }
     const submit = event.target.closest("[data-music-submit]"); if (submit){ void musicSubmitAnnotation(Number(submit.dataset.musicSubmit),root); return; }
@@ -3938,11 +4121,7 @@ function bindMusicLyricRoot(root){
     const line = Number(lineEl.dataset.line);
     if (musicLongPressedLine === line){ musicLongPressedLine = -1; return; }
     musicAudio.currentTime = Number(lineEl.dataset.time) || 0;
-    if ((musicLyricLines[line]?.annotations || []).length){ if (musicExpandedLines.has(line)) musicExpandedLines.delete(line); else musicExpandedLines.add(line); musicRenderLyrics(); }
   });
-  root.addEventListener("dblclick", event => { const line = event.target.closest(".lyric-line"); if (line && !event.target.closest(".lyric-editor")){ event.preventDefault(); musicOpenEditor(Number(line.dataset.line)); } });
-  root.addEventListener("pointerdown", event => { const line = event.target.closest(".lyric-line"); if (!line || event.target.closest("button,input")) return; const index = Number(line.dataset.line); clearTimeout(musicLongPressTimer); musicLongPressTimer = setTimeout(() => { musicLongPressedLine = index; musicOpenEditor(index); }, 620); });
-  ["pointerup","pointercancel","pointermove"].forEach(type => root.addEventListener(type, () => { clearTimeout(musicLongPressTimer); musicLongPressTimer = null; }));
 }
 [musicLyrics,chatMusicLyrics].forEach(bindMusicLyricRoot);
 if (musicFile) musicFile.addEventListener("change", () => { musicFileName.textContent = musicFile.files?.[0]?.name || "choose an audio file"; });
@@ -5522,9 +5701,9 @@ const DEFAULT_NEW_HEIGHT = 46;
 // ── DOM 回收(虚拟窗口)参数 ──
 // Safari 对含图片、阴影和事件监听器的长 DOM 很敏感。历史仍完整保留在
 // virtualRows/IndexedDB；这里只限制同时挂在页面上的节点数量，向上翻时按窗口换入。
-const DOM_WINDOW = 220;
-const DOM_PAD_UP = 90;
-const DOM_PAD_DOWN = 110;
+const DOM_WINDOW = 120;
+const DOM_PAD_UP = 50;
+const DOM_PAD_DOWN = 65;
 const DOM_EDGE = 42;
 const SCROLL_IDLE_MS = 140;   // 滚动停止判定:惯性结束后再做卸载/插入
 const CACHE_DB = "companion-message-cache";
@@ -6658,10 +6837,30 @@ function makeToolCard(rowData){
   row.querySelectorAll("details").forEach(d => d.addEventListener("toggle", () => measureVisibleRows({ stickToBottom:nearBottom() })));
   return row;
 }
+function parsedLyricShare(text){
+  const raw = String(text || "").trim();
+  const shared = /^♪\s+(.+?)\s+—\s+(.+?)\n"([\s\S]+)"$/.exec(raw);
+  if (shared) return { title:shared[1], artist:shared[2], lyrics:shared[3] };
+  const wrapped = /^\[lyric-quote:\s*([^\]]+)\]\s*([\s\S]*?)(?:\[\/lyric-quote\])?$/i.exec(raw);
+  if (!wrapped) return null;
+  let heading = wrapped[1].trim(), lyrics = wrapped[2].trim().replace(/\[\/lyric-quote\]$/i,"").trim().replace(/^"|"$/g,"");
+  if (!lyrics && heading.includes("|")){
+    const split = heading.indexOf("|"); lyrics = heading.slice(split + 1).trim().replace(/^"|"$/g,""); heading = heading.slice(0,split).trim();
+  }
+  const divider = heading.indexOf("—");
+  const title = divider >= 0 ? heading.slice(0,divider).trim() : "Lyrics";
+  const artist = divider >= 0 ? heading.slice(divider + 1).trim() : heading;
+  return lyrics ? { title,artist,lyrics } : null;
+}
+function lyricShareHtml(share){
+  if (!share) return "";
+  return `<span class="lyric-share-card"><span class="lyric-share-heading">♪ ${escapeHtml(share.title)} — ${escapeHtml(share.artist)}</span><span class="lyric-share-lines">${escapeHtml(share.lyrics)}</span></span>`;
+}
 function makeMessage(rowData){
   const m = rowData.message;
   const displayText = assistantDisplayText(m);
   const stickerHtml = stickerMessageHtml(displayText, m.from);
+  const lyricShare = parsedLyricShare(displayText);
   const row = document.createElement("div");
   row.className = `row ${m.from === "human" ? "human" : "ai"}${rowData.grouped ? " grouped" : ""}${rowData.tail ? " tail" : ""}`;
   row.dataset.id = m.id; row.dataset.from = m.from; row.dataset.ts = tsMs(m); row.dataset.messageKey = m._key;
@@ -6675,6 +6874,7 @@ function makeMessage(rowData){
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   if (stickerHtml) bubble.classList.add("sticker-layout");
+  if (lyricShare) bubble.classList.add("lyric-share-layout");
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
   const voiceIcon = m.voice || (m.meta && m.meta.voice)
     ? '<span class="voice-call-icon" aria-label="Voice call" title="Voice call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v2.4a2 2 0 0 1-2.2 2 19.4 19.4 0 0 1-8.4-3 19 19 0 0 1-5.9-5.9 19.4 19.4 0 0 1-3-8.4A2 2 0 0 1 4.5 2h2.4a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.4a15.6 15.6 0 0 0 6.6 6.6l1-1a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 1.8z"/></svg></span>'
@@ -6682,7 +6882,7 @@ function makeMessage(rowData){
   let _inner = voiceIcon;
   if (atts.length) _inner += renderAttachments(atts);
   const voiceSegments = m.from === "ai" && m.status !== "streaming" ? parseAssistantVoiceSegments(displayText) : [];
-  if (displayText) _inner += stickerHtml || `<span class="txt">${voiceSegments.length ? voiceMessageHtml(displayText, voiceSegments) : renderText(displayText)}</span>`;
+  if (displayText) _inner += lyricShareHtml(lyricShare) || stickerHtml || `<span class="txt">${voiceSegments.length ? voiceMessageHtml(displayText, voiceSegments) : renderText(displayText)}</span>`;
   _inner += `<span class="meta"></span>`;
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
@@ -9404,6 +9604,7 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
         content:gatewayContentForMessage({ text:text || "", ts:latestHuman && latestHuman.ts, meta:{ attachments } }, true)
       };
     }
+    injectMusicContextIntoMessages(messages);
     const systemMessage = messages[0] && messages[0].role === "system" ? messages[0] : null;
     const outboundMessages = systemMessage ? messages.slice(1) : messages;
     const systemContent = systemMessage ? systemMessage.content : "";
