@@ -1603,6 +1603,98 @@
     letter-spacing:.05em; color: var(--text-faint);
   }
 
+  /* ── MARGINALIA · shared music library ── */
+  .music-panel{ position:fixed; inset:0; z-index:198; pointer-events:none; opacity:0; transform:translateX(100%); transition:transform .38s var(--ease-soft),opacity .28s ease; }
+  .music-panel.open{ pointer-events:auto; opacity:1; transform:none; }
+  .music-page{ --music-bg:#0b0a09; --music-paper:#e8e0d4; --music-dim:#746d67; --music-accent:#c4956a; position:absolute; inset:0; overflow:hidden; color:var(--music-paper); background:var(--music-bg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .music-view{ position:absolute; inset:0; display:flex; flex-direction:column; background:var(--music-bg); transition:opacity .24s ease,transform .34s var(--ease-soft); }
+  .music-view.hidden{ display:none !important; }
+  .music-head{ flex:none; display:grid; grid-template-columns:42px 1fr 42px; align-items:center; padding:calc(env(safe-area-inset-top) + 13px) 16px 12px; z-index:3; }
+  .music-head-title{ margin:0; text-align:center; font:400 25px/1.1 "Cormorant Garamond",Georgia,serif; letter-spacing:.08em; }
+  .music-icon-btn{ width:42px; height:42px; display:grid; place-items:center; border:0; padding:0; border-radius:50%; color:var(--music-paper); background:transparent; cursor:pointer; }
+  .music-icon-btn:active{ background:rgba(232,224,212,.07); }
+  .music-icon-btn svg{ width:21px; height:21px; }
+  .music-library-scroll{ flex:1; min-height:0; overflow-y:auto; padding:18px 18px calc(env(safe-area-inset-bottom) + 26px); -webkit-overflow-scrolling:touch; }
+  .music-library-intro{ margin:4px 2px 24px; }
+  .music-kicker{ display:block; color:var(--music-accent); font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.22em; text-transform:uppercase; }
+  .music-library-intro h3{ margin:8px 0 4px; font:400 clamp(34px,10vw,50px)/.98 "Cormorant Garamond",Georgia,serif; }
+  .music-library-intro p{ margin:9px 0 0; max-width:280px; color:var(--music-dim); font:12px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .music-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:25px 15px; }
+  .music-card{ min-width:0; border:0; padding:0; color:inherit; background:none; text-align:left; cursor:pointer; }
+  .music-cover-wrap{ position:relative; display:block; width:100%; aspect-ratio:1; border-radius:6px; overflow:hidden; background:linear-gradient(145deg,#28221e,#12100f 72%); box-shadow:0 14px 32px rgba(0,0,0,.28); }
+  .music-cover{ width:100%; height:100%; display:block; object-fit:cover; }
+  .music-cover-placeholder{ position:absolute; inset:0; display:flex; flex-direction:column; justify-content:flex-end; gap:4px; padding:15px; background:radial-gradient(circle at 20% 15%,rgba(196,149,106,.14),transparent 45%),linear-gradient(145deg,#24201c,#0f0e0d); }
+  .music-cover-placeholder strong{ font:500 18px/1.05 "Cormorant Garamond",Georgia,serif; }
+  .music-cover-placeholder span{ color:var(--music-dim); font:10px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .music-card-copy{ display:block; padding:10px 2px 0; min-width:0; }
+  .music-card-title,.music-card-artist{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .music-card-title{ font:500 16px/1.25 "Cormorant Garamond",Georgia,serif; }
+  .music-card-artist{ margin-top:2px; color:var(--music-dim); font-size:11px; }
+  .music-added-tag{ display:inline-block; margin-top:7px; color:#a69b91; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.03em; }
+  .music-count{ margin:32px 0 4px; text-align:center; color:#514b47; font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.12em; }
+  .music-empty,.music-error,.music-loading{ grid-column:1/-1; padding:70px 20px; text-align:center; color:var(--music-dim); font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+  .music-player-view{ background:#0b0a09; }
+  .music-player-hero{ position:relative; flex:none; height:min(49vh,410px); min-height:330px; overflow:hidden; }
+  .music-player-backdrop{ position:absolute; inset:-34px; background-position:center; background-size:cover; filter:blur(28px) saturate(.65); opacity:.36; transform:scale(1.12); }
+  .music-player-hero::after{ content:""; position:absolute; inset:0; background:linear-gradient(to bottom,rgba(8,7,6,.3),#0b0a09 94%); }
+  .music-player-top{ position:absolute; inset:0 0 auto; z-index:3; display:grid; grid-template-columns:42px 1fr 42px; padding:calc(env(safe-area-inset-top) + 13px) 16px 0; }
+  .music-player-art{ position:absolute; z-index:2; left:50%; top:calc(env(safe-area-inset-top) + 67px); width:min(50vw,205px); aspect-ratio:1; transform:translateX(-50%); border-radius:7px; object-fit:cover; box-shadow:0 20px 50px rgba(0,0,0,.48); }
+  .music-player-placeholder{ position:absolute; z-index:2; left:50%; top:calc(env(safe-area-inset-top) + 67px); width:min(50vw,205px); aspect-ratio:1; transform:translateX(-50%); border-radius:7px; display:grid; place-items:center; padding:18px; text-align:center; color:#b9aa9b; background:linear-gradient(145deg,#2a231e,#12100f); font:500 18px/1.1 "Cormorant Garamond",Georgia,serif; box-shadow:0 20px 50px rgba(0,0,0,.48); }
+  .music-player-meta{ position:absolute; z-index:2; left:24px; right:24px; bottom:8px; text-align:center; }
+  .music-player-meta h3{ margin:0; font:500 clamp(22px,6.4vw,30px)/1.08 "Cormorant Garamond",Georgia,serif; }
+  .music-player-meta p{ margin:7px 0 0; color:var(--music-dim); font-size:11px; }
+  .music-controls{ flex:none; padding:6px 23px 18px; }
+  .music-control-row{ display:grid; grid-template-columns:38px 1fr; align-items:center; gap:14px; }
+  .music-play{ width:38px; height:38px; display:grid; place-items:center; border:0; border-radius:50%; color:#17120e; background:var(--music-accent); cursor:pointer; }
+  .music-play svg{ width:18px; height:18px; }
+  .music-progress-wrap{ min-width:0; }
+  .music-progress{ width:100%; height:16px; margin:0; appearance:none; -webkit-appearance:none; background:transparent; cursor:pointer; }
+  .music-progress::-webkit-slider-runnable-track{ height:2px; border-radius:2px; background:linear-gradient(to right,var(--music-accent) 0 var(--music-progress,0%),#312c28 var(--music-progress,0%) 100%); }
+  .music-progress::-webkit-slider-thumb{ width:8px; height:8px; margin-top:-3px; border:0; border-radius:50%; background:var(--music-paper); -webkit-appearance:none; }
+  .music-time-row{ display:flex; justify-content:space-between; color:#625b55; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .music-lyrics{ position:relative; flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:22px 22px calc(env(safe-area-inset-bottom) + 42px) 32px; scroll-behavior:smooth; -webkit-overflow-scrolling:touch; }
+  .music-lyrics::before{ content:"lyrics / marginalia"; display:block; margin:0 0 25px 8px; color:#4d4742; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.16em; text-transform:uppercase; }
+  .lyric-line{ position:relative; padding:8px 7px 8px 9px; color:#6b6460; font:400 16px/1.48 "Cormorant Garamond",Georgia,serif; transition:color .28s ease,font-size .28s ease,opacity .28s ease; user-select:none; -webkit-user-select:none; }
+  .lyric-line.past{ color:#403b38; }
+  .lyric-line.current{ color:var(--music-paper); font-size:18px; }
+  .lyric-line.future{ color:#6b6460; }
+  .lyric-line-text{ display:block; cursor:pointer; }
+  .lyric-dot{ position:absolute; left:-13px; top:17px; width:6px; height:6px; padding:0; border:0; border-radius:50%; background:var(--music-accent); box-shadow:0 0 0 3px rgba(196,149,106,.08); cursor:pointer; }
+  .lyric-line.current .lyric-dot{ animation:music-dot-pulse 2.8s ease-in-out infinite; }
+  @keyframes music-dot-pulse{ 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
+  .lyric-annotations{ display:none; padding:8px 0 2px 12px; }
+  .lyric-line.annotations-open .lyric-annotations{ display:block; animation:music-note-in .2s ease both; }
+  @keyframes music-note-in{ from{ opacity:0; transform:translateY(-3px); } }
+  .lyric-note{ position:relative; margin:0 0 10px; padding-left:11px; border-left:1px solid rgba(196,149,106,.28); color:#a79c92; font:12px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; user-select:text; -webkit-user-select:text; }
+  .lyric-note-meta{ display:block; margin-top:3px; color:#5f5853; font:8.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.04em; }
+  .lyric-editor{ display:grid; grid-template-columns:1fr auto; gap:7px; margin:7px 0 3px 10px; padding:9px 10px; border-radius:5px; background:#151311; animation:music-note-in .2s ease both; }
+  .lyric-editor input{ grid-column:1/-1; min-width:0; border:0; border-bottom:1px solid #302b27; border-radius:0; outline:0; padding:4px 1px 7px; color:var(--music-paper); background:transparent; font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .lyric-editor input::placeholder{ color:#59524c; }
+  .lyric-author-toggle{ display:flex; gap:4px; }
+  .lyric-author-toggle button,.lyric-submit{ border:0; border-radius:999px; padding:5px 9px; color:#6f6761; background:#211d1a; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; }
+  .lyric-author-toggle button.active{ color:#17120e; background:var(--music-accent); }
+  .lyric-submit{ width:28px; padding:0; color:#17120e; background:var(--music-paper); font-size:13px; }
+  .lyric-submit:disabled{ opacity:.42; }
+  .music-no-lyrics{ padding:60px 20px; text-align:center; color:#5d5651; font:13px/1.6 "Cormorant Garamond",Georgia,serif; }
+
+  .music-add-scroll{ flex:1; overflow-y:auto; padding:32px 25px calc(env(safe-area-inset-bottom) + 35px); }
+  .music-add-form{ max-width:520px; margin:0 auto; }
+  .music-add-form h3{ margin:0 0 8px; font:400 38px/1 "Cormorant Garamond",Georgia,serif; }
+  .music-add-form>p{ margin:0 0 35px; color:var(--music-dim); font-size:12px; }
+  .music-field{ display:block; margin:0 0 23px; color:#756c65; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.12em; text-transform:uppercase; }
+  .music-field input[type="text"]{ display:block; width:100%; box-sizing:border-box; margin-top:8px; padding:10px 0; border:0; border-bottom:1px solid #302b27; border-radius:0; outline:0; color:var(--music-paper); background:transparent; font:17px/1.3 "Cormorant Garamond",Georgia,serif; }
+  .music-file-label{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px; padding:13px 14px; border-radius:5px; color:#a59a90; background:#151311; text-transform:none; letter-spacing:0; font:12px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer; }
+  .music-file-label span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .music-by-toggle{ display:flex; gap:7px; margin-top:10px; }
+  .music-by-toggle button{ flex:1; border:0; border-radius:4px; padding:10px; color:#746c66; background:#151311; font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; }
+  .music-by-toggle button.active{ color:#17120e; background:var(--music-accent); }
+  .music-upload-submit{ width:100%; margin-top:16px; border:0; border-radius:4px; padding:14px; color:#17120e; background:var(--music-paper); font:600 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.1em; cursor:pointer; }
+  .music-upload-submit:disabled{ opacity:.45; }
+  .music-upload-status{ min-height:18px; margin-top:14px; color:var(--music-accent); text-align:center; font:10px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+  @media (min-width:700px){ .music-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); gap:30px 20px; max-width:860px; margin:0 auto; } .music-library-intro,.music-count{ max-width:860px; margin-left:auto; margin-right:auto; } }
+
   /* ── Conversation list (home → conversations → chat) ── */
   .conversation-panel{
     position:fixed; inset:0; z-index:195;
@@ -2611,10 +2703,10 @@
           <span class="menu-copy"><span class="menu-name">Memory</span><span class="menu-sub">The echoes we keep.</span></span>
           <span class="menu-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
-        <button class="menu-item" type="button" data-menu="tides">
+        <button class="menu-item" type="button" data-menu="music">
           <span class="menu-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5c1.8-2.2 3.6-2.2 5.4 0s3.6 2.2 5.4 0 3.6-2.2 5.4 0"/><path d="M3 13c1.8-2.2 3.6-2.2 5.4 0s3.6 2.2 5.4 0 3.6-2.2 5.4 0"/><path d="M3 17.5c1.8-2.2 3.6-2.2 5.4 0s3.6 2.2 5.4 0 3.6-2.2 5.4 0"/></svg></span>
           <span class="menu-dot"></span>
-          <span class="menu-copy"><span class="menu-name">Tides</span><span class="menu-sub">Where we return.</span></span>
+          <span class="menu-copy"><span class="menu-name">Music</span><span class="menu-sub">Where we return.</span></span>
           <span class="menu-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
         <button class="menu-item" type="button" data-menu="room">
@@ -2629,6 +2721,53 @@
       <div class="menu-foot">in endless tides, we find each other.</div>
     </div>
   </div>
+</div>
+
+<!-- ── MARGINALIA · shared music library ── -->
+<div class="music-panel hidden" id="musicPanel" role="dialog" aria-modal="true" aria-label="Marginalia music library">
+  <main class="music-page">
+    <section class="music-view music-library-view" id="musicLibraryView">
+      <header class="music-head">
+        <button class="music-icon-btn" id="musicHomeBack" type="button" aria-label="Back to home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 class="music-head-title">Marginalia</h2>
+        <button class="music-icon-btn" id="musicAddOpen" type="button" aria-label="Add song"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+      </header>
+      <div class="music-library-scroll">
+        <div class="music-library-intro"><span class="music-kicker">our listening room</span><h3>Songs we left<br>with each other.</h3><p>A shared shelf for music, and everything written quietly beside it.</p></div>
+        <div class="music-grid" id="musicGrid"><div class="music-loading">opening the library…</div></div>
+        <div class="music-count" id="musicCount">songs: —</div>
+      </div>
+    </section>
+
+    <section class="music-view music-player-view hidden" id="musicPlayerView">
+      <div class="music-player-hero">
+        <div class="music-player-backdrop" id="musicPlayerBackdrop"></div>
+        <div class="music-player-top"><button class="music-icon-btn" id="musicPlayerBack" type="button" aria-label="Back to library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button><span></span><span></span></div>
+        <img class="music-player-art hidden" id="musicPlayerArt" alt="" decoding="async">
+        <div class="music-player-placeholder hidden" id="musicPlayerPlaceholder"></div>
+        <div class="music-player-meta"><h3 id="musicPlayerTitle"></h3><p id="musicPlayerAdded"></p></div>
+      </div>
+      <div class="music-controls">
+        <div class="music-control-row">
+          <button class="music-play" id="musicPlay" type="button" aria-label="Play"></button>
+          <div class="music-progress-wrap"><input class="music-progress" id="musicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="music-time-row"><span id="musicCurrentTime">0:00</span><span id="musicTotalTime">0:00</span></div></div>
+        </div>
+      </div>
+      <div class="music-lyrics" id="musicLyrics"><div class="music-no-lyrics">loading lyrics…</div></div>
+      <audio id="musicAudio" preload="metadata"></audio>
+    </section>
+
+    <section class="music-view music-add-view hidden" id="musicAddView">
+      <header class="music-head"><button class="music-icon-btn" id="musicAddBack" type="button" aria-label="Back to library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button><h2 class="music-head-title">Add a song</h2><span></span></header>
+      <div class="music-add-scroll"><form class="music-add-form" id="musicAddForm"><h3>Leave something<br>on the shelf.</h3><p>Pass a song across the room.</p>
+        <label class="music-field">Artist<input id="musicArtist" name="artist" type="text" autocomplete="off" required></label>
+        <label class="music-field">Title<input id="musicTitle" name="title" type="text" autocomplete="off" required></label>
+        <label class="music-field">MP3 file<span class="music-file-label"><span id="musicFileName">choose an audio file</span><span>browse</span></span><input class="hidden" id="musicFile" name="file" type="file" accept="audio/mpeg,.mp3" required></label>
+        <div class="music-field">Added by<div class="music-by-toggle" id="musicAddedBy"><button class="active" type="button" data-author="Kitty">Kitty</button><button type="button" data-author="Hannes">Hannes</button></div></div>
+        <button class="music-upload-submit" id="musicUploadSubmit" type="submit">ADD TO LIBRARY</button><div class="music-upload-status" id="musicUploadStatus"></div>
+      </form></div>
+    </section>
+  </main>
 </div>
 
 <!-- ── Conversations (between home and chat) ── -->
@@ -3307,9 +3446,249 @@ if (menuPanel){
     if (item.dataset.menu === "chat") showConversationsFromMenu();
     else if (item.dataset.menu === "memory") showMemoryFromMenu();
     else if (item.dataset.menu === "album") navigateToAlbum();  // album shell (wire your own backend)
+    else if (item.dataset.menu === "music") openMusicPage();
     else showToast("即将开放");                           // placeholder items
   });
 }
+
+/* ── MARGINALIA · music library, synced lyrics, annotations ── */
+const MUSIC_API = "https://music-library.chenv354.workers.dev";
+const musicPanel = $("#musicPanel"), musicLibraryView = $("#musicLibraryView"), musicPlayerView = $("#musicPlayerView"), musicAddView = $("#musicAddView");
+const musicGrid = $("#musicGrid"), musicCount = $("#musicCount"), musicAudio = $("#musicAudio"), musicLyrics = $("#musicLyrics");
+const musicPlay = $("#musicPlay"), musicProgress = $("#musicProgress"), musicCurrentTime = $("#musicCurrentTime"), musicTotalTime = $("#musicTotalTime");
+const musicPlayerBackdrop = $("#musicPlayerBackdrop"), musicPlayerArt = $("#musicPlayerArt"), musicPlayerPlaceholder = $("#musicPlayerPlaceholder");
+const musicPlayerTitle = $("#musicPlayerTitle"), musicPlayerAdded = $("#musicPlayerAdded");
+const musicAddForm = $("#musicAddForm"), musicFile = $("#musicFile"), musicFileName = $("#musicFileName"), musicUploadSubmit = $("#musicUploadSubmit"), musicUploadStatus = $("#musicUploadStatus");
+let musicCloseTimer = null, musicSongs = [], musicSong = null, musicLyricLines = [], musicActiveLine = -1;
+let musicExpandedLines = new Set(), musicEditingLine = -1, musicAuthor = localStorage.getItem("marginalia_author") || "Kitty";
+let musicFollowPausedUntil = 0, musicFollowResumeTimer = null, musicAutoScrolling = false, musicLongPressTimer = null, musicLongPressedLine = -1;
+
+function musicShowView(view){
+  [musicLibraryView,musicPlayerView,musicAddView].forEach(el => el && el.classList.toggle("hidden", el !== view));
+}
+function musicCoverUrl(id){ return `${MUSIC_API}/cover?id=${encodeURIComponent(id)}`; }
+function musicAudioUrl(id){ return `${MUSIC_API}/audio?id=${encodeURIComponent(id)}`; }
+function musicPlayIcon(paused = true){
+  return paused
+    ? '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10-6.5z"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM14 5h4v14h-4z"/></svg>';
+}
+function musicFormatTime(seconds){
+  const safe = Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 0;
+  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2,"0")}`;
+}
+function musicRelativeTime(value){
+  const parsed = typeof value === "number" && value < 1e12 ? value * 1000 : Date.parse(value) || Number(value) || Date.now();
+  const seconds = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60); if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24); if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const months = Math.floor(days / 30); if (months < 12) return `${months} mo ago`;
+  const years = Math.floor(days / 365); return `${years} yr ago`;
+}
+function parseMarginaliaLrc(lrc){
+  const rows = [];
+  String(lrc || "").split(/\r?\n/).forEach(raw => {
+    const stamps = [...raw.matchAll(/\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\]/g)];
+    if (!stamps.length) return;
+    const text = raw.replace(/\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\]/g, "").trim();
+    stamps.forEach(stamp => rows.push({ time:Number(stamp[1]) * 60 + Number(stamp[2]), text }));
+  });
+  return rows.sort((a,b) => a.time - b.time).map((row,index) => ({ ...row, index, annotations:[] }));
+}
+function musicNormalizeAnnotations(annotations){
+  const grouped = new Map();
+  (Array.isArray(annotations) ? annotations : []).forEach(note => {
+    const line = Number(note && note.line);
+    if (!Number.isInteger(line) || line < 0) return;
+    if (!grouped.has(line)) grouped.set(line, []);
+    grouped.get(line).push(note);
+  });
+  musicLyricLines.forEach(line => { line.annotations = grouped.get(line.index) || []; });
+}
+function musicRenderLibrary(){
+  if (!musicGrid) return;
+  musicGrid.innerHTML = musicSongs.length ? musicSongs.map(song => {
+    const cover = song.hasCover
+      ? `<img class="music-cover" src="${escapeHtml(musicCoverUrl(song.id))}" alt="" loading="lazy" decoding="async" onerror="this.classList.add('hidden');this.nextElementSibling.classList.remove('hidden')"><span class="music-cover-placeholder hidden"><strong>${escapeHtml(song.title || "Untitled")}</strong><span>${escapeHtml(song.artist || "Unknown artist")}</span></span>`
+      : `<span class="music-cover-placeholder"><strong>${escapeHtml(song.title || "Untitled")}</strong><span>${escapeHtml(song.artist || "Unknown artist")}</span></span>`;
+    return `<button class="music-card" type="button" data-song-id="${escapeHtml(song.id)}"><span class="music-cover-wrap">${cover}</span><span class="music-card-copy"><span class="music-card-title">${escapeHtml(song.title || "Untitled")}</span><span class="music-card-artist">${escapeHtml(song.artist || "Unknown artist")}</span><span class="music-added-tag">added by ${escapeHtml(song.addedBy || "someone")}</span></span></button>`;
+  }).join("") : '<div class="music-empty">the shelf is waiting for its first song.</div>';
+  if (musicCount) musicCount.textContent = `songs: ${musicSongs.length}`;
+}
+async function musicLoadLibrary(force = false){
+  if (!force && musicSongs.length){ musicRenderLibrary(); return; }
+  musicGrid.innerHTML = '<div class="music-loading">opening the library…</div>';
+  try{
+    const response = await fetch(`${MUSIC_API}/list`, { headers:{ Accept:"application/json" } });
+    if (!response.ok) throw new Error(`Library ${response.status}`);
+    const data = await response.json();
+    musicSongs = Array.isArray(data) ? data : [];
+    musicRenderLibrary();
+  }catch(error){
+    console.error("Music library failed", error);
+    musicGrid.innerHTML = `<div class="music-error">couldn't open the library.<br>${escapeHtml(error.message)}</div>`;
+    if (musicCount) musicCount.textContent = "songs: —";
+  }
+}
+function openMusicPage(){
+  if (!musicPanel) return;
+  clearTimeout(musicCloseTimer);
+  musicShowView(musicLibraryView);
+  musicPanel.classList.remove("hidden");
+  requestAnimationFrame(() => requestAnimationFrame(() => musicPanel.classList.add("open")));
+  pageTransitionTimer = setTimeout(closeMenu, 420);
+  void musicLoadLibrary();
+}
+function closeMusicPage(){
+  if (!musicPanel) return;
+  musicAudio.pause();
+  openMenu();
+  musicPanel.classList.remove("open");
+  clearTimeout(musicCloseTimer);
+  musicCloseTimer = setTimeout(() => musicPanel.classList.add("hidden"), 400);
+}
+function musicBackToLibrary(){
+  musicAudio.pause();
+  musicAudio.removeAttribute("src");
+  musicAudio.load();
+  musicSong = null; musicLyricLines = []; musicActiveLine = -1; musicExpandedLines.clear(); musicEditingLine = -1;
+  musicShowView(musicLibraryView);
+}
+function musicAnnotationHtml(note){
+  return `<div class="lyric-note">${escapeHtml(note.text || "").replace(/\n/g,"<br>")}<span class="lyric-note-meta">${escapeHtml(note.author || "Unknown")} · ${escapeHtml(musicRelativeTime(note.timestamp))}</span></div>`;
+}
+function musicEditorHtml(lineIndex){
+  if (musicEditingLine !== lineIndex) return "";
+  return `<div class="lyric-editor" data-editor-line="${lineIndex}"><input type="text" maxlength="600" placeholder="write in the margins..." aria-label="Annotation"><div class="lyric-author-toggle"><button type="button" data-music-author="Kitty" class="${musicAuthor === "Kitty" ? "active" : ""}">Kitty</button><button type="button" data-music-author="Hannes" class="${musicAuthor === "Hannes" ? "active" : ""}">Hannes</button></div><button class="lyric-submit" type="button" data-music-submit="${lineIndex}" aria-label="Submit annotation">↑</button></div>`;
+}
+function musicRenderLyrics(){
+  if (!musicLyrics) return;
+  if (!musicLyricLines.length){ musicLyrics.innerHTML = '<div class="music-no-lyrics">No synced lyrics were left with this song.</div>'; return; }
+  musicLyrics.innerHTML = musicLyricLines.map(line => {
+    const notes = line.annotations || [], expanded = musicExpandedLines.has(line.index);
+    return `<div class="lyric-line${expanded ? " annotations-open" : ""}" data-line="${line.index}" data-time="${line.time}">${notes.length ? `<button class="lyric-dot" type="button" data-note-line="${line.index}" aria-label="${notes.length} annotation${notes.length === 1 ? "" : "s"}"></button>` : ""}<span class="lyric-line-text">${escapeHtml(line.text || "♪")}</span><div class="lyric-annotations">${notes.map(musicAnnotationHtml).join("")}</div>${musicEditorHtml(line.index)}</div>`;
+  }).join("");
+  musicUpdateActiveLyric(true);
+  if (musicEditingLine >= 0) requestAnimationFrame(() => musicLyrics.querySelector(`[data-editor-line="${musicEditingLine}"] input`)?.focus());
+}
+function musicUpdateActiveLyric(force = false){
+  if (!musicLyricLines.length) return;
+  const now = musicAudio.currentTime || 0;
+  let active = -1;
+  for (let i = 0; i < musicLyricLines.length; i++){ if (musicLyricLines[i].time <= now + .04) active = i; else break; }
+  if (!force && active === musicActiveLine) return;
+  musicActiveLine = active;
+  musicLyrics.querySelectorAll(".lyric-line").forEach((el,index) => {
+    el.classList.toggle("current", index === active);
+    el.classList.toggle("past", index < active);
+    el.classList.toggle("future", index > active);
+  });
+  if (active >= 0 && Date.now() >= musicFollowPausedUntil){
+    const current = musicLyrics.querySelector(`[data-line="${active}"]`);
+    if (current){ musicAutoScrolling = true; current.scrollIntoView({ behavior:"smooth", block:"center" }); setTimeout(() => { musicAutoScrolling = false; }, 500); }
+  }
+}
+async function musicOpenSong(id){
+  const summary = musicSongs.find(song => String(song.id) === String(id)) || { id };
+  musicShowView(musicPlayerView);
+  musicLyrics.innerHTML = '<div class="music-no-lyrics">opening the pages…</div>';
+  musicPlayerTitle.textContent = `${summary.artist || "Unknown artist"} — ${summary.title || "Untitled"}`;
+  musicPlayerAdded.textContent = `added by ${summary.addedBy || "someone"}`;
+  const coverUrl = musicCoverUrl(id);
+  musicPlayerBackdrop.style.backgroundImage = summary.hasCover ? `url("${coverUrl.replace(/"/g,"%22")}")` : "linear-gradient(145deg,#2b211b,#0b0a09)";
+  musicPlayerArt.classList.toggle("hidden", !summary.hasCover); musicPlayerPlaceholder.classList.toggle("hidden", !!summary.hasCover);
+  if (summary.hasCover){ musicPlayerArt.src = coverUrl; musicPlayerArt.alt = `${summary.artist || ""} ${summary.title || ""}`; musicPlayerArt.onerror = () => { musicPlayerArt.classList.add("hidden"); musicPlayerPlaceholder.classList.remove("hidden"); }; }
+  musicPlayerPlaceholder.textContent = `${summary.artist || "Unknown artist"}\n${summary.title || "Untitled"}`;
+  musicAudio.src = musicAudioUrl(id); musicAudio.load(); musicPlay.innerHTML = musicPlayIcon(true);
+  musicProgress.value = 0; musicProgress.style.setProperty("--music-progress","0%"); musicCurrentTime.textContent = "0:00"; musicTotalTime.textContent = "0:00";
+  musicExpandedLines.clear(); musicEditingLine = -1; musicActiveLine = -1;
+  try{
+    const response = await fetch(`${MUSIC_API}/song?id=${encodeURIComponent(id)}`, { headers:{ Accept:"application/json" } });
+    if (!response.ok) throw new Error(`Song ${response.status}`);
+    musicSong = { ...summary, ...(await response.json()), id };
+    musicPlayerTitle.textContent = `${musicSong.artist || "Unknown artist"} — ${musicSong.title || "Untitled"}`;
+    musicPlayerAdded.textContent = `added by ${musicSong.addedBy || "someone"}`;
+    musicLyricLines = parseMarginaliaLrc(musicSong.lyrics);
+    musicNormalizeAnnotations(musicSong.annotations);
+    musicRenderLyrics();
+  }catch(error){ console.error("Song details failed", error); musicLyrics.innerHTML = `<div class="music-no-lyrics">couldn't open the lyrics.<br>${escapeHtml(error.message)}</div>`; }
+}
+async function musicSubmitAnnotation(lineIndex){
+  const editor = musicLyrics.querySelector(`[data-editor-line="${lineIndex}"]`), input = editor?.querySelector("input");
+  const text = String(input?.value || "").trim();
+  if (!text || !musicSong) return;
+  const submit = editor.querySelector(".lyric-submit"); submit.disabled = true;
+  try{
+    const response = await fetch(`${MUSIC_API}/annotate`, { method:"POST", headers:{ "Content-Type":"application/json", Accept:"application/json" }, body:JSON.stringify({ id:musicSong.id, line:lineIndex, text, author:musicAuthor }) });
+    if (!response.ok) throw new Error(`Annotation ${response.status}: ${(await response.text().catch(() => "")).slice(0,160)}`);
+    const returned = await response.json().catch(() => null);
+    const note = returned && returned.annotation ? returned.annotation : { line:lineIndex, text, author:musicAuthor, timestamp:new Date().toISOString() };
+    const line = musicLyricLines[lineIndex];
+    if (line) line.annotations.push(note);
+    musicExpandedLines.add(lineIndex); musicEditingLine = -1; musicRenderLyrics();
+  }catch(error){ console.error("Annotation failed", error); submit.disabled = false; showToast("Annotation failed"); }
+}
+function musicOpenEditor(lineIndex){
+  musicEditingLine = lineIndex; musicExpandedLines.add(lineIndex); musicRenderLyrics();
+}
+
+if (musicGrid) musicGrid.addEventListener("click", event => { const card = event.target.closest("[data-song-id]"); if (card) void musicOpenSong(card.dataset.songId); });
+$("#musicHomeBack")?.addEventListener("click", closeMusicPage);
+$("#musicPlayerBack")?.addEventListener("click", musicBackToLibrary);
+$("#musicAddOpen")?.addEventListener("click", () => { musicShowView(musicAddView); musicUploadStatus.textContent = ""; });
+$("#musicAddBack")?.addEventListener("click", () => musicShowView(musicLibraryView));
+if (musicPlay) musicPlay.addEventListener("click", () => { if (!musicAudio.src) return; if (musicAudio.paused) musicAudio.play().catch(error => showToast(error.message)); else musicAudio.pause(); });
+if (musicAudio){
+  musicAudio.addEventListener("play", () => { musicPlay.innerHTML = musicPlayIcon(false); musicPlay.setAttribute("aria-label","Pause"); });
+  musicAudio.addEventListener("pause", () => { musicPlay.innerHTML = musicPlayIcon(true); musicPlay.setAttribute("aria-label","Play"); });
+  musicAudio.addEventListener("loadedmetadata", () => { musicTotalTime.textContent = musicFormatTime(musicAudio.duration); });
+  musicAudio.addEventListener("timeupdate", () => { const duration = musicAudio.duration || 0, ratio = duration ? musicAudio.currentTime / duration : 0; musicProgress.value = Math.round(ratio * 1000); musicProgress.style.setProperty("--music-progress",`${ratio * 100}%`); musicCurrentTime.textContent = musicFormatTime(musicAudio.currentTime); musicUpdateActiveLyric(); });
+  musicAudio.addEventListener("ended", () => { musicPlay.innerHTML = musicPlayIcon(true); });
+}
+if (musicProgress) musicProgress.addEventListener("input", () => { if (musicAudio.duration) musicAudio.currentTime = Number(musicProgress.value) / 1000 * musicAudio.duration; });
+if (musicLyrics){
+  const pauseFollow = () => {
+    if (musicAutoScrolling) return;
+    musicFollowPausedUntil = Date.now() + 3000;
+    clearTimeout(musicFollowResumeTimer);
+    musicFollowResumeTimer = setTimeout(() => { musicFollowPausedUntil = 0; musicUpdateActiveLyric(true); },3000);
+  };
+  musicLyrics.addEventListener("touchstart", pauseFollow, { passive:true }); musicLyrics.addEventListener("wheel", pauseFollow, { passive:true });
+  musicLyrics.addEventListener("click", event => {
+    const author = event.target.closest("[data-music-author]");
+    if (author){ musicAuthor = author.dataset.musicAuthor; localStorage.setItem("marginalia_author",musicAuthor); author.parentElement.querySelectorAll("button").forEach(btn => btn.classList.toggle("active",btn === author)); return; }
+    const submit = event.target.closest("[data-music-submit]"); if (submit){ void musicSubmitAnnotation(Number(submit.dataset.musicSubmit)); return; }
+    const dot = event.target.closest("[data-note-line]");
+    if (dot){ const line = Number(dot.dataset.noteLine); if (musicExpandedLines.has(line)) musicExpandedLines.delete(line); else musicExpandedLines.add(line); musicRenderLyrics(); return; }
+    const lineEl = event.target.closest(".lyric-line"); if (!lineEl || event.target.closest(".lyric-editor")) return;
+    const line = Number(lineEl.dataset.line);
+    if (musicLongPressedLine === line){ musicLongPressedLine = -1; return; }
+    musicAudio.currentTime = Number(lineEl.dataset.time) || 0;
+    if ((musicLyricLines[line]?.annotations || []).length){ if (musicExpandedLines.has(line)) musicExpandedLines.delete(line); else musicExpandedLines.add(line); musicRenderLyrics(); }
+  });
+  musicLyrics.addEventListener("dblclick", event => { const line = event.target.closest(".lyric-line"); if (line && !event.target.closest(".lyric-editor")){ event.preventDefault(); musicOpenEditor(Number(line.dataset.line)); } });
+  musicLyrics.addEventListener("pointerdown", event => { const line = event.target.closest(".lyric-line"); if (!line || event.target.closest("button,input")) return; const index = Number(line.dataset.line); clearTimeout(musicLongPressTimer); musicLongPressTimer = setTimeout(() => { musicLongPressedLine = index; musicOpenEditor(index); }, 620); });
+  ["pointerup","pointercancel","pointermove"].forEach(type => musicLyrics.addEventListener(type, () => { clearTimeout(musicLongPressTimer); musicLongPressTimer = null; }));
+}
+if (musicFile) musicFile.addEventListener("change", () => { musicFileName.textContent = musicFile.files?.[0]?.name || "choose an audio file"; });
+$("#musicAddedBy")?.addEventListener("click", event => { const button = event.target.closest("[data-author]"); if (!button) return; musicAuthor = button.dataset.author; localStorage.setItem("marginalia_author",musicAuthor); button.parentElement.querySelectorAll("button").forEach(btn => btn.classList.toggle("active",btn === button)); });
+$("#musicAddedBy")?.querySelectorAll("button").forEach(button => button.classList.toggle("active",button.dataset.author === musicAuthor));
+if (musicAddForm) musicAddForm.addEventListener("submit", async event => {
+  event.preventDefault(); const file = musicFile.files?.[0]; if (!file) return;
+  const form = new FormData(); form.append("artist",$("#musicArtist").value.trim()); form.append("title",$("#musicTitle").value.trim()); form.append("addedBy",musicAuthor); form.append("file",file,file.name);
+  musicUploadSubmit.disabled = true; musicUploadStatus.textContent = "uploading… keep this page open";
+  try{
+    const response = await fetch(`${MUSIC_API}/add`, { method:"POST", body:form });
+    if (!response.ok) throw new Error(`Upload ${response.status}: ${(await response.text().catch(() => "")).slice(0,180)}`);
+    musicUploadStatus.textContent = "added to the library"; musicAddForm.reset(); musicFileName.textContent = "choose an audio file"; await musicLoadLibrary(true); setTimeout(() => musicShowView(musicLibraryView),350);
+  }catch(error){ console.error("Music upload failed",error); musicUploadStatus.textContent = error.message; }
+  finally{ musicUploadSubmit.disabled = false; }
+});
+if (musicPlay) musicPlay.innerHTML = musicPlayIcon(true);
+document.addEventListener("keydown", event => { if (event.key === "Escape" && musicPanel && !musicPanel.classList.contains("hidden")){ if (!musicLibraryView.classList.contains("hidden")) closeMusicPage(); else musicBackToLibrary(); } });
+
 if (conversationBack) conversationBack.addEventListener("click", showMenuFromConversations);
 if (memoryBack) memoryBack.addEventListener("click", showMenuFromMemory);
 document.addEventListener("keydown", (e) => {
@@ -5030,17 +5409,40 @@ function hideIncompleteStickerWhileStreaming(text){
     ? source.slice(0, openAt)
     : source;
 }
+function assistantCodeFenceRanges(text){
+  const source = String(text || "");
+  const ranges = [];
+  const fence = /```([^\r\n`]*)\r?\n?([\s\S]*?)(```|$)/g;
+  let match;
+  while ((match = fence.exec(source))){
+    ranges.push({ start:match.index, end:match.index + match[0].length });
+    if (!match[3]) break;
+  }
+  return ranges;
+}
+function codeFenceEndAt(ranges, index){
+  for (const range of ranges){
+    if (index < range.start) return -1;
+    if (index < range.end) return range.end;
+  }
+  return -1;
+}
 function parseAssistantVoiceSegments(text){
   const source = String(text || "");
   const segments = [];
+  const codeRanges = assistantCodeFenceRanges(source);
   let index = 0;
   while (index < source.length){
+    const codeEnd = codeFenceEndAt(codeRanges, index);
+    if (codeEnd >= 0){ index = codeEnd; continue; }
     if (source[index] !== "*" || source[index - 1] === "*" || source[index + 1] === "*" || source[index - 1] === "\\"){
       index++;
       continue;
     }
     let close = index + 1;
     while (close < source.length){
+      const closeCodeEnd = codeFenceEndAt(codeRanges, close);
+      if (closeCodeEnd >= 0){ close = closeCodeEnd; continue; }
       if (source[close] === "*" && source[close - 1] !== "*" && source[close + 1] !== "*" && source[close - 1] !== "\\") break;
       close++;
     }
@@ -5053,9 +5455,16 @@ function parseAssistantVoiceSegments(text){
 }
 function hideAssistantVoiceWhileStreaming(text){
   const source = String(text || "");
+  const codeRanges = assistantCodeFenceRanges(source);
   let visible = "";
   let insideVoice = false;
   for (let index = 0; index < source.length; index++){
+    const codeEnd = codeFenceEndAt(codeRanges, index);
+    if (codeEnd >= 0){
+      visible += source.slice(index, codeEnd);
+      index = codeEnd - 1;
+      continue;
+    }
     const isMarker = source[index] === "*"
       && source[index - 1] !== "*"
       && source[index + 1] !== "*"
