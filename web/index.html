@@ -3425,7 +3425,6 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
 
   const VU_BARS = 16;   // 每侧声纹竖条数
   const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev?model=nova-3&language=multi";
-  const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
   const CALL_TTS_VOLUME_LOW = 0.35;
   const CALL_TTS_VOLUME_HIGH = 0.70;
 
@@ -3438,21 +3437,22 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let secs = 0, tickId = null, hideId = null, rafId = null;
   let waveBuilt = false;
   let bars = [];
-  let deepgramSocket = null, deepgramWanted = false, deepgramFinal = "", deepgramInterim = "";
-  let deepgramSilenceTimer = null, deepgramReconnectTimer = null, deepgramGeneration = 0;
-  let deepgramLastVoiceAt = 0, deepgramLastVadRefreshAt = 0;
-  let sttAudioCtx = null, sttSource = null, sttProcessor = null, sttSilentGain = null;
+  let deepgramSocket = null, deepgramGeneration = 0;
+  let micVad = null, vadInitPromise = null, vadWanted = false, vadSpeechActive = false;
+  let vadLibraryPromise = null;
+  let pendingVadAudio = null, sttTranscribing = false;
   let mediaStream = null;
   let transcriptPaintRaf = null, transcriptState = { text:"", caret:false };
   let audioCtx = null, analyser = null, freqData = null;
   let speakingUtterance = null;
-  let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null;
+  let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null, ttsPlaybackFinish = null;
   let speakSeq = 0;
   let callId = "", callStartedAt = 0;
   let callTurnBusy = false, callTurnController = null, ttsSource = null, ttsGainNode = null;
   let incomingOpen = false;
   let pendingIncomingText = "";
   let pendingRemoteHangup = false;
+  let activeStreamingTts = null, streamingTtsSequence = 0;
 
   function buildVu(){
     if (waveBuilt) return;
@@ -3718,162 +3718,231 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     return pcm.buffer;
   }
 
-  function stopDeepgramStt(){
-    deepgramWanted = false;
+  function closeDeepgramSocket(){
     deepgramGeneration++;
-    if (deepgramSilenceTimer){ clearTimeout(deepgramSilenceTimer); deepgramSilenceTimer = null; }
-    if (deepgramReconnectTimer){ clearTimeout(deepgramReconnectTimer); deepgramReconnectTimer = null; }
-    if (sttProcessor){ try{ sttProcessor.disconnect(); }catch(e){} sttProcessor.onaudioprocess = null; sttProcessor = null; }
-    if (sttSource){ try{ sttSource.disconnect(); }catch(e){} sttSource = null; }
-    if (sttSilentGain){ try{ sttSilentGain.disconnect(); }catch(e){} sttSilentGain = null; }
-    if (sttAudioCtx){ try{ sttAudioCtx.close(); }catch(e){} sttAudioCtx = null; }
-    if (deepgramSocket){
-      const socket = deepgramSocket;
-      deepgramSocket = null;
-      socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
-      try{ socket.close(1000, "stopped"); }catch(e){}
-    }
-    deepgramFinal = "";
-    deepgramInterim = "";
-    deepgramLastVoiceAt = 0;
-    deepgramLastVadRefreshAt = 0;
+    if (!deepgramSocket) return;
+    const socket = deepgramSocket;
+    deepgramSocket = null;
+    socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+    try{ socket.close(1000, "stopped"); }catch(e){}
   }
 
-  function finishDeepgramAfterSilence(){
-    deepgramSilenceTimer = null;
-    if (!open || muted || callTurnBusy) return;
-    const quietFor = Date.now() - deepgramLastVoiceAt;
-    if (deepgramLastVoiceAt && quietFor < 3000){
-      deepgramSilenceTimer = setTimeout(finishDeepgramAfterSilence, 3000 - quietFor);
-      return;
-    }
-    const finalText = [deepgramFinal, deepgramInterim].filter(Boolean).join(" ").trim();
-    stopDeepgramStt();
-    if (finalText){
-      setCaption("thinking");
-      setTranscript("thinking...", true);
-      void sendVoiceText(finalText, "deepgram");
-    }else if (open && !muted){
-      void startDeepgramStt();
+  async function stopDeepgramStt(destroy = false){
+    vadWanted = false;
+    pendingVadAudio = null;
+    closeDeepgramSocket();
+    if (!micVad) return;
+    const instance = micVad;
+    if (destroy){
+      micVad = null;
+      vadInitPromise = null;
+      try{ await instance.destroy(); }catch(e){}
+    }else{
+      try{ await instance.pause(); }catch(e){}
     }
   }
 
-  function resetDeepgramSilenceTimer(){
-    deepgramLastVoiceAt = Date.now();
-    if (deepgramSilenceTimer) clearTimeout(deepgramSilenceTimer);
-    deepgramSilenceTimer = setTimeout(finishDeepgramAfterSilence, 3000);
+  function interruptVoiceTurnForSpeech(){
+    if (!open) return;
+    cancelStreamingTts("user speech");
+    speakQueue.length = 0;
+    pendingRemoteHangup = false;
+    if (callTurnController && !callTurnController.signal.aborted) callTurnController.abort();
+    setCaption("listening");
+    setTranscript("listening...", true);
   }
 
-  function connectDeepgramSocket(generation){
-    if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy) return;
-    let socket;
-    try{ socket = new WebSocket(DEEPGRAM_STT_URL); }
-    catch(error){
-      setTranscript("Deepgram connection failed.", false);
-      return;
+  function sendPcmChunks(socket, audio){
+    const pcm = new Int16Array(audio.length);
+    for (let index = 0; index < audio.length; index++){
+      const sample = Math.max(-1, Math.min(1, audio[index]));
+      pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
     }
-    socket.binaryType = "arraybuffer";
-    deepgramSocket = socket;
-    socket.onopen = () => {
-      if (generation !== deepgramGeneration || !deepgramWanted){ try{ socket.close(); }catch(e){} return; }
-      setCaption("listening");
-      setTranscript("speak to me.", true);
-    };
-    socket.onmessage = (event) => {
-      if (generation !== deepgramGeneration || !deepgramWanted) return;
-      let data;
-      try{ data = JSON.parse(String(event.data || "")); }catch(e){ return; }
-      const heard = String(data.channel && data.channel.alternatives && data.channel.alternatives[0] && data.channel.alternatives[0].transcript || "").trim();
-      if (!heard) return;
-      if (data.is_final){
-        deepgramFinal += (deepgramFinal ? " " : "") + heard;
-        deepgramInterim = "";
-      }else{
-        deepgramInterim = heard;
+    const bytes = new Uint8Array(pcm.buffer);
+    const chunkSize = 32 * 1024;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize){
+      socket.send(bytes.slice(offset, Math.min(bytes.length, offset + chunkSize)).buffer);
+    }
+  }
+
+  function transcribeVadAudio(audio){
+    return new Promise((resolve, reject) => {
+      if (!open || muted || !audio || !audio.length){ resolve(""); return; }
+      closeDeepgramSocket();
+      const generation = deepgramGeneration;
+      let socket, transcript = "", settled = false, finalTimer = null;
+      const timeout = setTimeout(() => finish(new Error("Deepgram transcription timeout")), 15000);
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (finalTimer) clearTimeout(finalTimer);
+        if (deepgramSocket === socket) deepgramSocket = null;
+        if (socket){
+          socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+          try{ socket.close(1000, "segment complete"); }catch(e){}
+        }
+        if (error) reject(error); else resolve(transcript.trim());
+      };
+      try{ socket = new WebSocket(DEEPGRAM_STT_URL); }
+      catch(error){ finish(error); return; }
+      socket.binaryType = "arraybuffer";
+      deepgramSocket = socket;
+      socket.onopen = () => {
+        if (!open || muted || generation !== deepgramGeneration){ finish(); return; }
+        try{
+          sendPcmChunks(socket, audio);
+          socket.send(JSON.stringify({ type:"Finalize" }));
+        }catch(error){ finish(error); }
+      };
+      socket.onmessage = event => {
+        let data;
+        try{ data = JSON.parse(String(event.data || "")); }catch(_){ return; }
+        const heard = String(data.channel && data.channel.alternatives && data.channel.alternatives[0] && data.channel.alternatives[0].transcript || "").trim();
+        if (heard && data.is_final) transcript += (transcript ? " " : "") + heard;
+        if (heard) setTranscript("你: " + (transcript || heard), true);
+        if (data.speech_final || data.from_finalize){ finish(); return; }
+        if (heard && data.is_final){
+          if (finalTimer) clearTimeout(finalTimer);
+          finalTimer = setTimeout(() => finish(), 300);
+        }
+      };
+      socket.onerror = () => finish(new Error("Deepgram connection failed"));
+      socket.onclose = () => finish();
+    });
+  }
+
+  async function processVadSpeech(audio){
+    if (!open || muted || !audio || !audio.length) return;
+    pendingVadAudio = audio;
+    if (sttTranscribing) return;
+    sttTranscribing = true;
+    try{
+      while (pendingVadAudio && open && !muted){
+        const segment = pendingVadAudio;
+        pendingVadAudio = null;
+        setCaption("transcribing");
+        setTranscript("transcribing...", true);
+        const transcriptText = await transcribeVadAudio(segment);
+        if (!transcriptText) continue;
+        while (callTurnBusy && open) await new Promise(resolve => setTimeout(resolve, 30));
+        if (open && !muted) await sendVoiceText(transcriptText, "deepgram-vad");
       }
-      const transcriptText = [deepgramFinal, deepgramInterim].filter(Boolean).join(" ");
-      setTranscript("你: " + transcriptText, true);
-      pulseVu(0.5 + Math.random() * 0.45);
-      resetDeepgramSilenceTimer();
-    };
-    socket.onerror = () => {
-      if (open && deepgramWanted) setTranscript("Deepgram connection interrupted. Reconnecting...", false);
-    };
-    socket.onclose = () => {
-      if (deepgramSocket === socket) deepgramSocket = null;
-      if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy) return;
-      if (deepgramReconnectTimer) clearTimeout(deepgramReconnectTimer);
-      deepgramReconnectTimer = setTimeout(() => {
-        deepgramReconnectTimer = null;
-        connectDeepgramSocket(generation);
-      }, 800);
-    };
+    }catch(error){
+      if (open && !muted){
+        console.error("VAD/Deepgram transcription failed", error);
+        setTranscript("Transcription failed. Speak again.", false);
+      }
+    }finally{ sttTranscribing = false; }
+  }
+
+  function loadCallScript(src){
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[data-call-src="${src}"]`);
+      if (existing){
+        if (existing.dataset.loaded === "true") resolve();
+        else{
+          existing.addEventListener("load", resolve, { once:true });
+          existing.addEventListener("error", reject, { once:true });
+        }
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = src;
+      script.dataset.callSrc = src;
+      script.onload = () => { script.dataset.loaded = "true"; resolve(); };
+      script.onerror = () => reject(new Error(`Could not load ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureVadLibrary(){
+    if (window.vad && window.vad.MicVAD) return;
+    if (!vadLibraryPromise){
+      vadLibraryPromise = (async () => {
+        await loadCallScript("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.js");
+        await loadCallScript("https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/bundle.min.js");
+        if (!window.vad || !window.vad.MicVAD) throw new Error("vad-web failed to initialize");
+      })().catch(error => { vadLibraryPromise = null; throw error; });
+    }
+    await vadLibraryPromise;
+  }
+
+  async function createMicVad(){
+    await ensureVadLibrary();
+    return window.vad.MicVAD.new({
+      model:"v5",
+      baseAssetPath:"https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/",
+      onnxWASMBasePath:"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/",
+      startOnLoad:false,
+      redemptionMs:450,
+      preSpeechPadMs:300,
+      minSpeechMs:250,
+      submitUserSpeechOnPause:false,
+      getStream:async () => {
+        if (!mediaStream || !mediaStream.getAudioTracks().some(track => track.readyState === "live")){
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio:{ channelCount:1, echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+          await startWaveMeter(mediaStream);
+        }
+        mediaStream.getAudioTracks().forEach(track => { track.enabled = true; });
+        return mediaStream;
+      },
+      pauseStream:async stream => { stream.getAudioTracks().forEach(track => { track.enabled = false; }); },
+      resumeStream:async stream => {
+        if (stream && stream.getAudioTracks().some(track => track.readyState === "live")){
+          stream.getAudioTracks().forEach(track => { track.enabled = true; });
+          return stream;
+        }
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio:{ channelCount:1, echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+        await startWaveMeter(mediaStream);
+        return mediaStream;
+      },
+      onSpeechStart:() => {
+        if (!open || muted) return;
+        vadSpeechActive = true;
+        setCaption("listening");
+        pulseVu(.8);
+      },
+      onSpeechRealStart:() => {
+        if (!open || muted) return;
+        interruptVoiceTurnForSpeech();
+      },
+      onSpeechEnd:audio => {
+        vadSpeechActive = false;
+        if (open && !muted) void processVadSpeech(audio);
+      },
+      onVADMisfire:() => { vadSpeechActive = false; },
+      onFrameProcessed:probabilities => {
+        if (!open || muted || minimized || !vadSpeechActive) return;
+        pulseVu(Math.max(.18, Math.min(1, Number(probabilities && probabilities.isSpeech) || 0)));
+      }
+    });
   }
 
   async function startDeepgramStt(){
-    stopDeepgramStt();
-    if (!open || muted || callTurnBusy) return false;
+    if (!open || muted) return false;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.WebSocket){
       setCaption("unavailable");
       setTranscript("Microphone streaming is not supported in this browser.", false);
       return false;
     }
-    deepgramWanted = true;
-    deepgramFinal = "";
-    deepgramInterim = "";
-    const generation = ++deepgramGeneration;
+    vadWanted = true;
     try{
-      if (!mediaStream || !mediaStream.getAudioTracks().some(track => track.readyState === "live")){
-        const acquiredStream = await navigator.mediaDevices.getUserMedia({ audio:true });
-        if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy){
-          acquiredStream.getTracks().forEach(track => { try{ track.stop(); }catch(e){} });
-          return false;
-        }
-        mediaStream = acquiredStream;
-        await startWaveMeter(mediaStream);
+      if (!micVad){
+        if (!vadInitPromise) vadInitPromise = createMicVad();
+        micVad = await vadInitPromise;
       }
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) throw new Error("AudioContext unavailable");
-      let captureCtx;
-      try{ captureCtx = new AC({ sampleRate:16000 }); }
-      catch(e){ captureCtx = new AC(); }
-      sttAudioCtx = captureCtx;
-      await captureCtx.resume();
-      if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy){
-        try{ captureCtx.close(); }catch(e){}
-        if (sttAudioCtx === captureCtx) sttAudioCtx = null;
-        return false;
-      }
-      sttSource = captureCtx.createMediaStreamSource(mediaStream);
-      sttProcessor = captureCtx.createScriptProcessor(4096, 1, 1);
-      sttSilentGain = captureCtx.createGain();
-      sttSilentGain.gain.value = 0;
-      sttSource.connect(sttProcessor);
-      sttProcessor.connect(sttSilentGain);
-      sttSilentGain.connect(captureCtx.destination);
-      sttProcessor.onaudioprocess = event => {
-        const socket = deepgramSocket;
-        if (!deepgramWanted || !socket || socket.readyState !== WebSocket.OPEN) return;
-        const samples = event.inputBuffer.getChannelData(0);
-        let energy = 0;
-        for (let i = 0; i < samples.length; i += 4) energy += samples[i] * samples[i];
-        const rms = Math.sqrt(energy / Math.ceil(samples.length / 4));
-        const now = Date.now();
-        if (rms > 0.014 && (deepgramFinal || deepgramInterim) && now - deepgramLastVadRefreshAt > 180){
-          deepgramLastVadRefreshAt = now;
-          resetDeepgramSilenceTimer();
-        }
-        if (socket.bufferedAmount > DEEPGRAM_MAX_BUFFERED_BYTES) return;
-        try{ socket.send(pcm16At16k(samples, captureCtx.sampleRate)); }catch(e){}
-      };
-      connectDeepgramSocket(generation);
+      if (!vadWanted || !open || muted) return false;
+      await micVad.start();
+      setCaption("listening");
+      setTranscript("speak to me.", true);
       return true;
     }catch(error){
-      if (generation === deepgramGeneration){
-        stopDeepgramStt();
-        setCaption("unavailable");
-        setTranscript("Microphone or Deepgram could not be started.", false);
-      }
+      vadInitPromise = null;
+      micVad = null;
+      console.error("VAD could not be started", error);
+      setCaption("unavailable");
+      setTranscript("Microphone or VAD could not be started.", false);
       return false;
     }
   }
@@ -3893,7 +3962,79 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
     if (ttsSource){ try{ ttsSource.stop(); }catch(e){} ttsSource = null; }
     if (ttsGainNode){ try{ ttsGainNode.disconnect(); }catch(e){} ttsGainNode = null; }
+    if (ttsPlaybackFinish){
+      const finish = ttsPlaybackFinish;
+      ttsPlaybackFinish = null;
+      try{ finish(); }catch(e){}
+    }
     speakingUtterance = null;
+  }
+
+  function cancelStreamingTts(reason){
+    const session = activeStreamingTts;
+    if (session){
+      session.cancelled = true;
+      session.controllers.forEach(controller => {
+        try{ controller.abort(reason || "cancelled"); }catch(e){}
+      });
+      session.controllers.clear();
+      activeStreamingTts = null;
+    }
+    clearSpeechPlayback();
+  }
+
+  function createStreamingTts(){
+    cancelStreamingTts("superseded");
+    const session = {
+      id:++streamingTtsSequence,
+      buffer:"",
+      cancelled:false,
+      controllers:new Set(),
+      playback:Promise.resolve()
+    };
+    activeStreamingTts = session;
+    return session;
+  }
+
+  function enqueueStreamingTtsSentence(session, sentence){
+    const text = String(sentence || "").trim();
+    if (!text || session.cancelled) return;
+    const controller = new AbortController();
+    session.controllers.add(controller);
+    // Start synthesis immediately. Chaining only the playback keeps network
+    // requests parallel while preserving the original sentence order.
+    const audioPromise = apiTts(text, { signal:controller.signal })
+      .finally(() => session.controllers.delete(controller));
+    session.playback = session.playback.then(async () => {
+      try{
+        const blob = await audioPromise;
+        if (session.cancelled || activeStreamingTts !== session || !open) return;
+        await speakOne(text, blob, session);
+      }catch(error){
+        if (!session.cancelled && error && error.name !== "AbortError") console.error("Sentence TTS failed", error);
+      }
+    });
+  }
+
+  function feedStreamingTts(session, delta){
+    if (!session || session.cancelled || !delta) return;
+    session.buffer += String(delta);
+    while (true){
+      const boundary = session.buffer.search(/[.?!。？！]/);
+      if (boundary < 0) break;
+      let end = boundary + 1;
+      while (end < session.buffer.length && /[\"'”’）)\]]/.test(session.buffer[end])) end++;
+      enqueueStreamingTtsSentence(session, session.buffer.slice(0, end));
+      session.buffer = session.buffer.slice(end);
+    }
+  }
+
+  async function finishStreamingTts(session){
+    if (!session || session.cancelled) return;
+    if (session.buffer.trim()) enqueueStreamingTtsSentence(session, session.buffer);
+    session.buffer = "";
+    try{ await session.playback; }
+    finally{ if (activeStreamingTts === session) activeStreamingTts = null; }
   }
 
   function callTtsVolume(){
@@ -3925,7 +4066,6 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     const clean = String(text || "").trim();
     if (!clean || !open || callTurnBusy) return;
     callTurnBusy = true;
-    deepgramWanted = false;
     const sense = privateMode ? flushAudioSense() : "";
     const optimisticTs = Date.now();
     const tempKey = msgKey(localMessageId());
@@ -3949,16 +4089,18 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     setTranscript("thinking...", true);
     setQuote(HINT_THINKING, { hint:true, dots:true });
     callTurnController = new AbortController();
+    const streamingTts = createStreamingTts();
     try{
       const result = await apiVoiceText(clean + sense, {
         source:source || "deepgram",
         call_id:callId,
         transcript:clean + sense,
         controller:callTurnController,
-        onText(){
+        onText(_fullText, deltaText){
           if (!open) return;
           setCaption("thinking");
           setTranscript("thinking...", true);
+          feedStreamingTts(streamingTts, deltaText);
         }
       }, Number(tempKey));
       if (result && result.aborted){
@@ -3970,14 +4112,13 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       confirmOptimistic(tempKey, msgKey(result.id));
       dropPendingOutgoing(tempKey);
       const fullText = String(result.text || "").trim();
-      if (fullText){
-        await speakOne(fullText);
-      }
+      await finishStreamingTts(streamingTts);
       if (result.hangup){
         closeCall({ endedBy:"ai" });
         return;
       }
     }catch(error){
+      cancelStreamingTts("voice turn failed");
       dropPendingOutgoing(tempKey);
       if (!open || (callTurnController && callTurnController.signal.aborted)) return;
       setMessage({ ...optimistic, status:"failed" });
@@ -4100,7 +4241,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (callTurnController && !callTurnController.signal.aborted) callTurnController.abort();
     callTurnController = null;
     callTurnBusy = false;
-    stopDeepgramStt();
+    cancelStreamingTts("call ended");
+    void stopDeepgramStt(true);
     stopMicrophone();
     clearSpeechPlayback();
     speakQueue.length = 0;
@@ -4126,7 +4268,6 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   async function drainSpeakQueue(){
     if (speakBusy || !speakQueue.length || !open) return;
     speakBusy = true;
-    stopDeepgramStt();
     while (speakQueue.length && open){
       const text = speakQueue.shift();
       setCaption("speaking");
@@ -4151,11 +4292,14 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     }
   }
 
-  async function speakOne(text){
-    let blob = null;
+  async function speakOne(text, prefetchedBlob = null, streamingSession = null){
+    let blob = prefetchedBlob;
     try{
-      console.log("[speak] fetching TTS…");
-      blob = await apiTts(text);
+      if (!blob){
+        console.log("[speak] fetching TTS…");
+        blob = await apiTts(text);
+      }
+      if (streamingSession && (streamingSession.cancelled || activeStreamingTts !== streamingSession)) return;
       console.log("[speak] blob:", blob && blob.size);
       if (blob && open){
         const ctx = ensureTtsCtx();
@@ -4166,6 +4310,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
           const audioBuf = await ctx.decodeAudioData(arrayBuf);
           if (!open) return;
           await new Promise((resolve) => {
+            let settled = false;
             const source = ctx.createBufferSource();
             const gain = ctx.createGain();
             ttsSource = source;
@@ -4201,13 +4346,21 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
             }
             const vuTick = setInterval(() => { if (!minimized) setWaveLevel(0.45 + Math.random() * 0.5); }, 140);
             const stopVu = () => { clearInterval(vuTick); setWaveLevel(0); if (lyricId) clearTimeout(lyricId); };
-            const safety = setTimeout(() => { stopVu(); resolve(); }, (audioBuf.duration * 1000) + 3000);
+            const finishPlayback = () => {
+              if (settled) return;
+              settled = true;
+              if (ttsPlaybackFinish === finishPlayback) ttsPlaybackFinish = null;
+              stopVu();
+              resolve();
+            };
+            ttsPlaybackFinish = finishPlayback;
+            const safety = setTimeout(finishPlayback, (audioBuf.duration * 1000) + 3000);
             source.onended = () => {
-              clearTimeout(safety); stopVu();
+              clearTimeout(safety);
               if (ttsSource === source) ttsSource = null;
               if (ttsGainNode === gain) ttsGainNode = null;
               try{ gain.disconnect(); }catch(e){}
-              resolve();
+              finishPlayback();
             };
             console.log("[speak] WebAudio playing, duration:", audioBuf.duration.toFixed(1) + "s");
           });
@@ -4232,9 +4385,11 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
               settled = true;
               if (speakTimeout){ clearTimeout(speakTimeout); speakTimeout = null; }
               audio.onended = audio.onerror = null;
+              if (ttsPlaybackFinish === finish) ttsPlaybackFinish = null;
               setWaveLevel(0);
               if (error) reject(error); else resolve();
             };
+            ttsPlaybackFinish = () => finish();
             audio.onended = () => finish();
             audio.onerror = () => finish(new Error("HTMLAudio could not play TTS"));
             speakTimeout = setTimeout(() => finish(new Error("HTMLAudio TTS timeout")), 120000);
@@ -8604,11 +8759,12 @@ async function apiVoiceText(text, options = {}, reservedHumanId){
 }
 async function apiVoiceBlob(){ throw new Error("Voice gateway hook is not configured"); }
 async function apiCallEvent(){ return { ok:true }; }
-async function apiTts(text){
+async function apiTts(text, options = {}){
   const response = await fetch(TTS_URL, {
     method:"POST",
     headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"audio/mpeg" },
-    body:JSON.stringify({ text:String(text || "") })
+    body:JSON.stringify({ text:String(text || "") }),
+    signal:options.signal
   });
   if (!response.ok){
     const errorText = await response.text().catch(() => "");
