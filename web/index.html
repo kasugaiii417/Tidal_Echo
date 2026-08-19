@@ -1620,7 +1620,8 @@
   .music-library-intro h3{ margin:8px 0 4px; font:400 clamp(34px,10vw,50px)/.98 "Cormorant Garamond",Georgia,serif; }
   .music-library-intro p{ margin:9px 0 0; max-width:280px; color:var(--music-dim); font:12px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
   .music-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:25px 15px; }
-  .music-card{ min-width:0; border:0; padding:0; color:inherit; background:none; text-align:left; cursor:pointer; }
+  .music-card{ min-width:0; border:0; padding:0; color:inherit; background:none; text-align:left; cursor:pointer; touch-action:pan-y; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none; }
+  .music-card.deleting{ opacity:.42; pointer-events:none; transition:opacity .18s ease; }
   .music-cover-wrap{ position:relative; display:block; width:100%; aspect-ratio:1; border-radius:6px; overflow:hidden; background:linear-gradient(145deg,#28221e,#12100f 72%); box-shadow:0 14px 32px rgba(0,0,0,.28); }
   .music-cover{ width:100%; height:100%; display:block; object-fit:cover; }
   .music-cover-placeholder{ position:absolute; inset:0; display:flex; flex-direction:column; justify-content:flex-end; gap:4px; padding:15px; background:radial-gradient(circle at 20% 15%,rgba(196,149,106,.14),transparent 45%),linear-gradient(145deg,#24201c,#0f0e0d); }
@@ -2799,7 +2800,7 @@
       <div class="music-add-scroll"><form class="music-add-form" id="musicAddForm"><h3>Leave something<br>on the shelf.</h3><p>Pass a song across the room.</p>
         <label class="music-field">Artist<input id="musicArtist" name="artist" type="text" autocomplete="off" required></label>
         <label class="music-field">Title<input id="musicTitle" name="title" type="text" autocomplete="off" required></label>
-        <label class="music-field">MP3 file<span class="music-file-label"><span id="musicFileName">choose an audio file</span><span>browse</span></span><input class="hidden" id="musicFile" name="file" type="file" accept="audio/mpeg,.mp3" required></label>
+        <label class="music-field">MP3 file<span class="music-file-label"><span id="musicFileName">choose an audio file</span><span>browse</span></span><input class="hidden" id="musicFile" name="mp3_file" type="file" accept="audio/mpeg,audio/mp3,.mp3" required></label>
         <div class="music-field">Added by<div class="music-by-toggle" id="musicAddedBy"><button class="active" type="button" data-author="Kitty">Kitty</button><button type="button" data-author="Hannes">Hannes</button></div></div>
         <button class="music-upload-submit" id="musicUploadSubmit" type="submit">ADD TO LIBRARY</button><div class="music-upload-status" id="musicUploadStatus"></div>
       </form></div>
@@ -3505,6 +3506,7 @@ let musicExpandedLines = new Set(), musicEditingLine = -1, musicAuthor = localSt
 let musicFollowPausedUntil = 0, musicFollowResumeTimer = null, musicAutoScrolling = false, musicLongPressTimer = null, musicLongPressedLine = -1;
 let musicPlaybackRaf = null;
 let musicLibraryRequest = null, musicAudioRetryCount = 0;
+let musicCardLongPressTimer = null, musicCardLongPressId = null, musicCardLongPressX = 0, musicCardLongPressY = 0, musicSuppressCardClickUntil = 0;
 
 function musicDelay(milliseconds){ return new Promise(resolve => setTimeout(resolve,milliseconds)); }
 async function musicFetchJson(path, retries = 1){
@@ -3544,6 +3546,9 @@ function musicReadSongCache(id){
 function musicWriteSongCache(song){
   if (!song || song.id == null) return;
   try{ localStorage.setItem(`${MUSIC_SONG_CACHE_PREFIX}${song.id}`,JSON.stringify({ savedAt:Date.now(),song })); }catch(_){ }
+}
+function musicDeleteSongCache(id){
+  try{ localStorage.removeItem(`${MUSIC_SONG_CACHE_PREFIX}${id}`); }catch(_){ }
 }
 
 function musicShowView(view){
@@ -3790,6 +3795,32 @@ async function musicOpenSong(id){
     }else showToast("Showing saved lyrics — library is offline");
   }
 }
+async function musicDeleteSong(id){
+  const song = musicSongs.find(item => String(item.id) === String(id));
+  if (!song || !window.confirm(`Delete “${song.title || "this song"}” from the library?`)) return;
+  const card = Array.from(musicGrid?.querySelectorAll("[data-song-id]") || []).find(el => String(el.dataset.songId) === String(id));
+  card?.classList.add("deleting");
+  try{
+    const response = await fetch(`${MUSIC_API}/delete`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", Accept:"application/json" },
+      body:JSON.stringify({ id:song.id })
+    });
+    if (!response.ok) throw new Error(`Delete ${response.status}: ${(await response.text().catch(() => "")).slice(0,180)}`);
+    musicSongs = musicSongs.filter(item => String(item.id) !== String(id));
+    musicWriteLibraryCache(musicSongs); musicDeleteSongCache(id);
+    if (musicSong && String(musicSong.id) === String(id)){
+      musicStopPlayback();
+      musicAudio.removeAttribute("src"); musicAudio.load(); musicSong = null; musicLyricLines = [];
+    }
+    musicRenderLibrary();
+    showToast("Song deleted");
+  }catch(error){
+    console.error("Music delete failed",error);
+    card?.classList.remove("deleting");
+    showToast(error.message || "Delete failed");
+  }
+}
 async function musicSubmitAnnotation(lineIndex, root = musicLyrics){
   const editor = root.querySelector(`[data-editor-line="${lineIndex}"]`), input = editor?.querySelector("input");
   const text = String(input?.value || "").trim();
@@ -3810,9 +3841,30 @@ function musicOpenEditor(lineIndex){
 }
 
 if (musicGrid) musicGrid.addEventListener("click", event => {
+  if (Date.now() < musicSuppressCardClickUntil){ event.preventDefault(); return; }
   if (event.target.closest("[data-music-retry]")){ void musicLoadLibrary(true); return; }
   const card = event.target.closest("[data-song-id]"); if (card) void musicOpenSong(card.dataset.songId);
 });
+function musicClearCardLongPress(){ clearTimeout(musicCardLongPressTimer); musicCardLongPressTimer = null; musicCardLongPressId = null; }
+if (musicGrid){
+  musicGrid.addEventListener("pointerdown", event => {
+    const card = event.target.closest("[data-song-id]");
+    if (!card || (event.button != null && event.button !== 0)) return;
+    musicClearCardLongPress();
+    musicCardLongPressId = card.dataset.songId; musicCardLongPressX = event.clientX; musicCardLongPressY = event.clientY;
+    musicCardLongPressTimer = setTimeout(() => {
+      const id = musicCardLongPressId;
+      musicClearCardLongPress(); musicSuppressCardClickUntil = Date.now() + 800;
+      try{ navigator.vibrate?.(18); }catch(_){ }
+      if (id != null) void musicDeleteSong(id);
+    },650);
+  });
+  musicGrid.addEventListener("pointermove", event => {
+    if (musicCardLongPressTimer && Math.hypot(event.clientX - musicCardLongPressX,event.clientY - musicCardLongPressY) > 10) musicClearCardLongPress();
+  });
+  ["pointerup","pointercancel","pointerleave"].forEach(type => musicGrid.addEventListener(type,musicClearCardLongPress));
+  musicGrid.addEventListener("contextmenu", event => { if (event.target.closest("[data-song-id]")) event.preventDefault(); });
+}
 $("#musicHomeBack")?.addEventListener("click", closeMusicPage);
 $("#musicPlayerBack")?.addEventListener("click", musicBackToLibrary);
 $("#musicAddOpen")?.addEventListener("click", () => { musicShowView(musicAddView); musicUploadStatus.textContent = ""; });
@@ -3881,7 +3933,7 @@ $("#musicAddedBy")?.addEventListener("click", event => { const button = event.ta
 $("#musicAddedBy")?.querySelectorAll("button").forEach(button => button.classList.toggle("active",button.dataset.author === musicAuthor));
 if (musicAddForm) musicAddForm.addEventListener("submit", async event => {
   event.preventDefault(); const file = musicFile.files?.[0]; if (!file) return;
-  const form = new FormData(); form.append("artist",$("#musicArtist").value.trim()); form.append("title",$("#musicTitle").value.trim()); form.append("addedBy",musicAuthor); form.append("file",file,file.name);
+  const form = new FormData(); form.append("artist",$("#musicArtist").value.trim()); form.append("title",$("#musicTitle").value.trim()); form.append("addedBy",musicAuthor); form.append("mp3_file",file,file.name);
   musicUploadSubmit.disabled = true; musicUploadStatus.textContent = "uploading… keep this page open";
   try{
     const response = await fetch(`${MUSIC_API}/add`, { method:"POST", body:form });
