@@ -3585,6 +3585,26 @@ function musicWriteSongCache(song){
   if (!song || song.id == null) return;
   try{ localStorage.setItem(`${MUSIC_SONG_CACHE_PREFIX}${song.id}`,JSON.stringify({ savedAt:Date.now(),song })); }catch(_){ }
 }
+function musicIsAnnotationWriteUrl(value){
+  try{
+    const url = new URL(String(value || ""));
+    return url.origin === MUSIC_API && url.pathname.replace(/\/+$/, "") === "/annotate";
+  }catch(_){ return false; }
+}
+async function musicRefreshCurrentAnnotations(){
+  if (!musicSong || musicSong.id == null) return;
+  const songId = String(musicSong.id);
+  try{
+    const fresh = await musicFetchJson(`/song?id=${encodeURIComponent(songId)}`);
+    if (!musicSong || String(musicSong.id) !== songId) return;
+    musicSong = { ...musicSong, ...fresh, id:musicSong.id };
+    musicNormalizeAnnotations(musicSong.annotations);
+    musicWriteSongCache(musicSong);
+    musicRenderLyrics();
+  }catch(error){
+    console.warn("Couldn't refresh Marginalia annotations",error);
+  }
+}
 function musicDeleteSongCache(id){
   try{ localStorage.removeItem(`${MUSIC_SONG_CACHE_PREFIX}${id}`); }catch(_){ }
 }
@@ -9115,9 +9135,13 @@ async function handleFiles(list){
   const files = Array.from(list || []);
   if (!files.length) return;
   const caption = inputEl.value.trim();
+  inputEl.value = "";
+  resizeComposerInput();
+  sendBtn.classList.remove("hidden");
+  micBtn.classList.add("hidden");
   const sent = await sendFiles(files,caption);
-  if (sent && caption){
-    inputEl.value = "";
+  if (!sent && caption && !inputEl.value){
+    inputEl.value = caption;
     resizeComposerInput();
   }
 }
@@ -9630,6 +9654,9 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
       if (!streamed.toolUses.length) break;
       outboundMessages.push({ role:"assistant", content:streamed.contentBlocks });
       const executions = await Promise.all(streamed.toolUses.map(toolUse => executeFetchTool(toolUse, generationController.signal)));
+      if (executions.some(execution => !execution.error && musicIsAnnotationWriteUrl(execution.url))){
+        await musicRefreshCurrentAnnotations();
+      }
       executions.forEach(renderToolExecution);
       scheduleRender({ stickToBottom:nearBottom() });
       scheduleCacheSave();
