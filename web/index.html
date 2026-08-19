@@ -1635,30 +1635,28 @@
   .music-empty,.music-error,.music-loading{ grid-column:1/-1; padding:70px 20px; text-align:center; color:var(--music-dim); font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; }
 
   .music-player-view{ background:#0b0a09; }
-  .music-player-hero{ position:relative; flex:none; height:min(49vh,410px); min-height:330px; overflow:hidden; }
-  .music-player-backdrop{ position:absolute; inset:-34px; background-position:center; background-size:cover; filter:blur(28px) saturate(.65); opacity:.36; transform:scale(1.12); }
-  .music-player-hero::after{ content:""; position:absolute; inset:0; background:linear-gradient(to bottom,rgba(8,7,6,.3),#0b0a09 94%); }
-  .music-player-top{ position:absolute; inset:0 0 auto; z-index:3; display:grid; grid-template-columns:42px 1fr 42px; padding:calc(env(safe-area-inset-top) + 13px) 16px 0; }
-  .music-player-art{ position:absolute; z-index:2; left:50%; top:calc(env(safe-area-inset-top) + 67px); width:min(50vw,205px); aspect-ratio:1; transform:translateX(-50%); border-radius:7px; object-fit:cover; box-shadow:0 20px 50px rgba(0,0,0,.48); }
-  .music-player-placeholder{ position:absolute; z-index:2; left:50%; top:calc(env(safe-area-inset-top) + 67px); width:min(50vw,205px); aspect-ratio:1; transform:translateX(-50%); border-radius:7px; display:grid; place-items:center; padding:18px; text-align:center; color:#b9aa9b; background:linear-gradient(145deg,#2a231e,#12100f); font:500 18px/1.1 "Cormorant Garamond",Georgia,serif; box-shadow:0 20px 50px rgba(0,0,0,.48); }
-  .music-player-meta{ position:absolute; z-index:2; left:24px; right:24px; bottom:8px; text-align:center; }
-  .music-player-meta h3{ margin:0; font:500 clamp(22px,6.4vw,30px)/1.08 "Cormorant Garamond",Georgia,serif; }
-  .music-player-meta p{ margin:7px 0 0; color:var(--music-dim); font-size:11px; }
-  .music-controls{ flex:none; padding:6px 23px 18px; }
-  .music-control-row{ display:grid; grid-template-columns:38px 1fr; align-items:center; gap:14px; }
+  .music-player-header{ flex:none; display:grid; grid-template-columns:42px minmax(0,1fr) 42px; align-items:center; padding:calc(env(safe-area-inset-top) + 11px) 16px 10px; }
+  .music-player-heading{ min-width:0; text-align:center; }
+  .music-player-heading strong,.music-player-heading span{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .music-player-heading strong{ color:var(--music-paper); font:500 18px/1.2 "Cormorant Garamond",Georgia,serif; }
+  .music-player-heading span{ margin-top:2px; color:var(--music-dim); font-size:10px; }
+  .music-controls{ flex:none; padding:10px 23px 7px; }
+  .music-control-row{ display:flex; flex-direction:column; align-items:center; gap:8px; }
   .music-play{ width:38px; height:38px; display:grid; place-items:center; border:0; border-radius:50%; color:#17120e; background:var(--music-accent); cursor:pointer; }
   .music-play svg{ width:18px; height:18px; }
-  .music-progress-wrap{ min-width:0; }
+  .music-progress-wrap{ width:100%; min-width:0; }
   .music-progress{ width:100%; height:16px; margin:0; appearance:none; -webkit-appearance:none; background:transparent; cursor:pointer; }
   .music-progress::-webkit-slider-runnable-track{ height:2px; border-radius:2px; background:linear-gradient(to right,var(--music-accent) 0 var(--music-progress,0%),#312c28 var(--music-progress,0%) 100%); }
   .music-progress::-webkit-slider-thumb{ width:8px; height:8px; margin-top:-3px; border:0; border-radius:50%; background:var(--music-paper); -webkit-appearance:none; }
   .music-time-row{ display:flex; justify-content:space-between; color:#625b55; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; }
-  .music-lyrics{ position:relative; flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:22px 22px calc(env(safe-area-inset-bottom) + 42px) 32px; scroll-behavior:smooth; -webkit-overflow-scrolling:touch; }
+  .music-player-added{ flex:none; padding:3px 20px calc(env(safe-area-inset-bottom) + 12px); color:#5f5853; text-align:center; font:9px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .music-lyrics{ position:relative; flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:20px 22px 28px 32px; -webkit-overflow-scrolling:touch; }
   .music-lyrics::before{ content:"lyrics / marginalia"; display:block; margin:0 0 25px 8px; color:#4d4742; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.16em; text-transform:uppercase; }
-  .lyric-line{ position:relative; padding:8px 7px 8px 9px; color:#6b6460; font:400 16px/1.48 "Cormorant Garamond",Georgia,serif; transition:color .28s ease,font-size .28s ease,opacity .28s ease; user-select:none; -webkit-user-select:none; }
+  .lyric-edge-spacer{ height:calc(50% - 35px); min-height:80px; pointer-events:none; }
+  .lyric-line{ position:relative; padding:10px 7px 10px 9px; color:#8c827a; font:400 17px/1.68 "Cormorant Garamond",Georgia,serif; transition:color .28s ease,font-size .28s ease,opacity .28s ease; user-select:none; -webkit-user-select:none; }
   .lyric-line.past{ color:#403b38; }
-  .lyric-line.current{ color:var(--music-paper); font-size:18px; }
-  .lyric-line.future{ color:#6b6460; }
+  .lyric-line.current{ color:var(--music-paper); font-size:21px; line-height:1.62; }
+  .lyric-line.future{ color:#8c827a; }
   .lyric-line-text{ display:block; cursor:pointer; }
   .lyric-dot{ position:absolute; left:-13px; top:17px; width:6px; height:6px; padding:0; border:0; border-radius:50%; background:var(--music-accent); box-shadow:0 0 0 3px rgba(196,149,106,.08); cursor:pointer; }
   .lyric-line.current .lyric-dot{ animation:music-dot-pulse 2.8s ease-in-out infinite; }
@@ -1677,6 +1675,40 @@
   .lyric-submit{ width:28px; padding:0; color:#17120e; background:var(--music-paper); font-size:13px; }
   .lyric-submit:disabled{ opacity:.42; }
   .music-no-lyrics{ padding:60px 20px; text-align:center; color:#5d5651; font:13px/1.6 "Cormorant Garamond",Georgia,serif; }
+
+  /* persistent player between chat header and messages */
+  .chat-music-dock{ --dock-paper:#e8e0d4; --dock-dim:#81776f; --dock-accent:#c4956a; position:relative; z-index:9; flex:none; margin:0; color:var(--dock-paper); background:rgba(12,10,9,.94); border-bottom:1px solid rgba(196,149,106,.18); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); transition:height .34s var(--ease-soft); overflow:hidden; }
+  .chat-music-dock.hidden{ display:none; }
+  .chat-music-compact{ height:52px; display:grid; grid-template-columns:38px minmax(0,1fr) 38px; align-items:center; gap:8px; padding:5px 13px; }
+  .chat-music-expand{ min-width:0; align-self:stretch; border:0; padding:0 4px; color:inherit; background:transparent; text-align:left; cursor:pointer; }
+  .chat-music-expand strong,.chat-music-expand span{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-music-expand strong{ font:500 14px/1.15 "Cormorant Garamond",Georgia,serif; }
+  .chat-music-expand span{ margin-top:3px; color:var(--dock-dim); font-size:9px; }
+  .chat-music-btn{ width:36px; height:36px; display:grid; place-items:center; border:0; border-radius:50%; padding:0; color:var(--dock-paper); background:transparent; cursor:pointer; }
+  .chat-music-btn svg{ width:17px; height:17px; }
+  .chat-music-stop{ color:var(--dock-dim); font-size:15px; }
+  .chat-music-expanded{ display:none; height:100%; flex-direction:column; min-height:0; }
+  .chat-music-dock.expanded .chat-music-expanded{ display:flex; }
+  .chat-music-dock.expanded .chat-music-compact{ display:none; }
+  .chat-music-dock.expanded{ height:min(49vh,430px); }
+  .chat-music-dock:not(.expanded){ height:52px; }
+  .chat-music-drawer-head{ flex:none; display:grid; grid-template-columns:38px minmax(0,1fr) 38px; align-items:center; padding:3px 13px 4px; }
+  .chat-music-drawer-title{ min-width:0; text-align:center; }
+  .chat-music-drawer-title strong,.chat-music-drawer-title span{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-music-drawer-title strong{ font:500 15px/1.15 "Cormorant Garamond",Georgia,serif; }
+  .chat-music-drawer-title span{ color:var(--dock-dim); font-size:9px; }
+  .chat-music-lyrics{ position:relative; flex:1; min-height:0; overflow-y:auto; padding:5px 21px 10px 31px; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+  .chat-music-lyrics .lyric-line{ padding-top:7px; padding-bottom:7px; color:#91867e; font-size:16px; line-height:1.6; }
+  .chat-music-lyrics .lyric-edge-spacer{ height:calc(50% - 20px); min-height:45px; }
+  .chat-music-lyrics .lyric-line.current{ color:var(--dock-paper); font-size:19px; }
+  .chat-music-lyrics .lyric-note{ color:#b1a59a; }
+  .chat-music-controls{ flex:none; padding:4px 18px 9px; }
+  .chat-music-drawer-play{ width:32px; height:32px; margin:3px auto 0; display:grid; place-items:center; border:0; border-radius:50%; color:#17120e; background:var(--dock-accent); }
+  .chat-music-drawer-play svg{ width:15px; height:15px; }
+  .chat-music-progress{ width:100%; height:12px; appearance:none; -webkit-appearance:none; background:transparent; }
+  .chat-music-progress::-webkit-slider-runnable-track{ height:2px; border-radius:2px; background:linear-gradient(to right,var(--dock-accent) 0 var(--music-progress,0%),#3b342f var(--music-progress,0%) 100%); }
+  .chat-music-progress::-webkit-slider-thumb{ width:7px; height:7px; margin-top:-2.5px; border:0; border-radius:50%; background:var(--dock-paper); -webkit-appearance:none; }
+  .chat-music-time{ display:flex; justify-content:space-between; color:#776e67; font:8px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; }
 
   .music-add-scroll{ flex:1; overflow-y:auto; padding:32px 25px calc(env(safe-area-inset-bottom) + 35px); }
   .music-add-form{ max-width:520px; margin:0 auto; }
@@ -2444,6 +2476,18 @@
     </div>
     <button class="avatar hidden" id="avatarBtn" aria-label="查看个人信息" title="个人信息"></button>
   </header>
+  <section class="chat-music-dock hidden" id="chatMusicDock" aria-label="Now playing">
+    <div class="chat-music-compact">
+      <button class="chat-music-btn chat-music-stop" id="chatMusicStop" type="button" aria-label="Stop music">■</button>
+      <button class="chat-music-expand" id="chatMusicExpand" type="button" aria-label="Expand lyrics"><strong id="chatMusicTitle"></strong><span id="chatMusicArtist"></span></button>
+      <button class="chat-music-btn" id="chatMusicPlay" type="button" aria-label="Play"></button>
+    </div>
+    <div class="chat-music-expanded">
+      <div class="chat-music-drawer-head"><button class="chat-music-btn" id="chatMusicCollapse" type="button" aria-label="Collapse lyrics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button><div class="chat-music-drawer-title"><strong id="chatMusicDrawerTitle"></strong><span id="chatMusicDrawerArtist"></span></div><span></span></div>
+      <div class="chat-music-lyrics" id="chatMusicLyrics"></div>
+      <div class="chat-music-controls"><input class="chat-music-progress" id="chatMusicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="chat-music-time"><span id="chatMusicCurrent">0:00</span><span id="chatMusicTotal">0:00</span></div><button class="chat-music-drawer-play" id="chatMusicDrawerPlay" type="button" aria-label="Play"></button></div>
+    </div>
+  </section>
   <div class="session-pop" id="sessionPop" hidden>
     <div class="session-head">
       <div class="session-title">API 窗口</div>
@@ -2740,20 +2784,10 @@
     </section>
 
     <section class="music-view music-player-view hidden" id="musicPlayerView">
-      <div class="music-player-hero">
-        <div class="music-player-backdrop" id="musicPlayerBackdrop"></div>
-        <div class="music-player-top"><button class="music-icon-btn" id="musicPlayerBack" type="button" aria-label="Back to library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button><span></span><span></span></div>
-        <img class="music-player-art hidden" id="musicPlayerArt" alt="" decoding="async">
-        <div class="music-player-placeholder hidden" id="musicPlayerPlaceholder"></div>
-        <div class="music-player-meta"><h3 id="musicPlayerTitle"></h3><p id="musicPlayerAdded"></p></div>
-      </div>
-      <div class="music-controls">
-        <div class="music-control-row">
-          <button class="music-play" id="musicPlay" type="button" aria-label="Play"></button>
-          <div class="music-progress-wrap"><input class="music-progress" id="musicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="music-time-row"><span id="musicCurrentTime">0:00</span><span id="musicTotalTime">0:00</span></div></div>
-        </div>
-      </div>
+      <header class="music-player-header"><button class="music-icon-btn" id="musicPlayerBack" type="button" aria-label="Back to library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button><div class="music-player-heading"><strong id="musicPlayerTitle"></strong><span id="musicPlayerArtist"></span></div><span></span></header>
       <div class="music-lyrics" id="musicLyrics"><div class="music-no-lyrics">loading lyrics…</div></div>
+      <div class="music-controls"><div class="music-control-row"><div class="music-progress-wrap"><input class="music-progress" id="musicProgress" type="range" min="0" max="1000" value="0" aria-label="Song position"><div class="music-time-row"><span id="musicCurrentTime">0:00</span><span id="musicTotalTime">0:00</span></div></div><button class="music-play" id="musicPlay" type="button" aria-label="Play"></button></div></div>
+      <div class="music-player-added" id="musicPlayerAdded"></div>
       <audio id="musicAudio" preload="metadata"></audio>
     </section>
 
@@ -3456,12 +3490,14 @@ const MUSIC_API = "https://music-library.chenv354.workers.dev";
 const musicPanel = $("#musicPanel"), musicLibraryView = $("#musicLibraryView"), musicPlayerView = $("#musicPlayerView"), musicAddView = $("#musicAddView");
 const musicGrid = $("#musicGrid"), musicCount = $("#musicCount"), musicAudio = $("#musicAudio"), musicLyrics = $("#musicLyrics");
 const musicPlay = $("#musicPlay"), musicProgress = $("#musicProgress"), musicCurrentTime = $("#musicCurrentTime"), musicTotalTime = $("#musicTotalTime");
-const musicPlayerBackdrop = $("#musicPlayerBackdrop"), musicPlayerArt = $("#musicPlayerArt"), musicPlayerPlaceholder = $("#musicPlayerPlaceholder");
-const musicPlayerTitle = $("#musicPlayerTitle"), musicPlayerAdded = $("#musicPlayerAdded");
+const musicPlayerTitle = $("#musicPlayerTitle"), musicPlayerArtist = $("#musicPlayerArtist"), musicPlayerAdded = $("#musicPlayerAdded");
+const chatMusicDock = $("#chatMusicDock"), chatMusicLyrics = $("#chatMusicLyrics"), chatMusicPlay = $("#chatMusicPlay"), chatMusicDrawerPlay = $("#chatMusicDrawerPlay"), chatMusicProgress = $("#chatMusicProgress");
+const chatMusicCurrent = $("#chatMusicCurrent"), chatMusicTotal = $("#chatMusicTotal");
 const musicAddForm = $("#musicAddForm"), musicFile = $("#musicFile"), musicFileName = $("#musicFileName"), musicUploadSubmit = $("#musicUploadSubmit"), musicUploadStatus = $("#musicUploadStatus");
 let musicCloseTimer = null, musicSongs = [], musicSong = null, musicLyricLines = [], musicActiveLine = -1;
 let musicExpandedLines = new Set(), musicEditingLine = -1, musicAuthor = localStorage.getItem("marginalia_author") || "Kitty";
 let musicFollowPausedUntil = 0, musicFollowResumeTimer = null, musicAutoScrolling = false, musicLongPressTimer = null, musicLongPressedLine = -1;
+let musicPlaybackRaf = null;
 
 function musicShowView(view){
   [musicLibraryView,musicPlayerView,musicAddView].forEach(el => el && el.classList.toggle("hidden", el !== view));
@@ -3543,17 +3579,12 @@ function openMusicPage(){
 }
 function closeMusicPage(){
   if (!musicPanel) return;
-  musicAudio.pause();
   openMenu();
   musicPanel.classList.remove("open");
   clearTimeout(musicCloseTimer);
   musicCloseTimer = setTimeout(() => musicPanel.classList.add("hidden"), 400);
 }
 function musicBackToLibrary(){
-  musicAudio.pause();
-  musicAudio.removeAttribute("src");
-  musicAudio.load();
-  musicSong = null; musicLyricLines = []; musicActiveLine = -1; musicExpandedLines.clear(); musicEditingLine = -1;
   musicShowView(musicLibraryView);
 }
 function musicAnnotationHtml(note){
@@ -3563,60 +3594,118 @@ function musicEditorHtml(lineIndex){
   if (musicEditingLine !== lineIndex) return "";
   return `<div class="lyric-editor" data-editor-line="${lineIndex}"><input type="text" maxlength="600" placeholder="write in the margins..." aria-label="Annotation"><div class="lyric-author-toggle"><button type="button" data-music-author="Kitty" class="${musicAuthor === "Kitty" ? "active" : ""}">Kitty</button><button type="button" data-music-author="Hannes" class="${musicAuthor === "Hannes" ? "active" : ""}">Hannes</button></div><button class="lyric-submit" type="button" data-music-submit="${lineIndex}" aria-label="Submit annotation">↑</button></div>`;
 }
-function musicRenderLyrics(){
-  if (!musicLyrics) return;
-  if (!musicLyricLines.length){ musicLyrics.innerHTML = '<div class="music-no-lyrics">No synced lyrics were left with this song.</div>'; return; }
-  musicLyrics.innerHTML = musicLyricLines.map(line => {
+function musicLyricsMarkup(){
+  if (!musicLyricLines.length) return '<div class="music-no-lyrics">No synced lyrics were left with this song.</div>';
+  const lines = musicLyricLines.map(line => {
     const notes = line.annotations || [], expanded = musicExpandedLines.has(line.index);
     return `<div class="lyric-line${expanded ? " annotations-open" : ""}" data-line="${line.index}" data-time="${line.time}">${notes.length ? `<button class="lyric-dot" type="button" data-note-line="${line.index}" aria-label="${notes.length} annotation${notes.length === 1 ? "" : "s"}"></button>` : ""}<span class="lyric-line-text">${escapeHtml(line.text || "♪")}</span><div class="lyric-annotations">${notes.map(musicAnnotationHtml).join("")}</div>${musicEditorHtml(line.index)}</div>`;
   }).join("");
+  return `<div class="lyric-edge-spacer" aria-hidden="true"></div>${lines}<div class="lyric-edge-spacer" aria-hidden="true"></div>`;
+}
+function musicRenderLyrics(){
+  const markup = musicLyricsMarkup();
+  [musicLyrics,chatMusicLyrics].forEach(root => { if (root) root.innerHTML = markup; });
   musicUpdateActiveLyric(true);
-  if (musicEditingLine >= 0) requestAnimationFrame(() => musicLyrics.querySelector(`[data-editor-line="${musicEditingLine}"] input`)?.focus());
+  if (musicEditingLine >= 0) requestAnimationFrame(() => {
+    const visibleRoot = [musicLyrics,chatMusicLyrics].find(root => root && root.offsetParent !== null);
+    visibleRoot?.querySelector(`[data-editor-line="${musicEditingLine}"] input`)?.focus();
+  });
 }
 function musicUpdateActiveLyric(force = false){
   if (!musicLyricLines.length) return;
   const now = musicAudio.currentTime || 0;
-  let active = -1;
-  for (let i = 0; i < musicLyricLines.length; i++){ if (musicLyricLines[i].time <= now + .04) active = i; else break; }
+  let low = 0, high = musicLyricLines.length - 1, active = -1;
+  while (low <= high){
+    const middle = (low + high) >> 1;
+    if (musicLyricLines[middle].time <= now + .015){ active = middle; low = middle + 1; }
+    else high = middle - 1;
+  }
+  if (active < 0 && musicLyricLines.length) active = 0;
   if (!force && active === musicActiveLine) return;
   musicActiveLine = active;
-  musicLyrics.querySelectorAll(".lyric-line").forEach((el,index) => {
-    el.classList.toggle("current", index === active);
-    el.classList.toggle("past", index < active);
-    el.classList.toggle("future", index > active);
-  });
+  [musicLyrics,chatMusicLyrics].forEach(root => root?.querySelectorAll(".lyric-line").forEach((el,index) => {
+      el.classList.toggle("current", index === active);
+      el.classList.toggle("past", index < active);
+      el.classList.toggle("future", index > active);
+    })
+  );
   if (active >= 0 && Date.now() >= musicFollowPausedUntil){
-    const current = musicLyrics.querySelector(`[data-line="${active}"]`);
-    if (current){ musicAutoScrolling = true; current.scrollIntoView({ behavior:"smooth", block:"center" }); setTimeout(() => { musicAutoScrolling = false; }, 500); }
+    [musicLyrics,chatMusicLyrics].forEach(root => {
+      if (!root || root.offsetParent === null) return;
+      const current = root.querySelector(`[data-line="${active}"]`);
+      if (current){
+        musicAutoScrolling = true;
+        const rootRect = root.getBoundingClientRect(), lineRect = current.getBoundingClientRect();
+        const targetTop = Math.max(0,root.scrollTop + lineRect.top - rootRect.top - (root.clientHeight - lineRect.height) / 2);
+        root.scrollTop = targetTop;
+        requestAnimationFrame(() => { musicAutoScrolling = false; });
+      }
+    });
   }
+}
+function musicSyncDock(summary){
+  if (!chatMusicDock || !summary) return;
+  chatMusicDock.classList.remove("hidden");
+  $("#chatMusicTitle").textContent = summary.title || "Untitled";
+  $("#chatMusicArtist").textContent = summary.artist || "Unknown artist";
+  $("#chatMusicDrawerTitle").textContent = summary.title || "Untitled";
+  $("#chatMusicDrawerArtist").textContent = summary.artist || "Unknown artist";
+}
+function musicStopPlayback(){
+  musicAudio.pause();
+  try{ musicAudio.currentTime = 0; }catch(_){ }
+  chatMusicDock?.classList.add("hidden");
+  chatMusicDock?.classList.remove("expanded");
+}
+function musicSyncPlaybackUi(){
+  const duration = musicAudio.duration || 0, ratio = duration ? musicAudio.currentTime / duration : 0;
+  const value = Math.round(ratio * 1000), percent = `${ratio * 100}%`, current = musicFormatTime(musicAudio.currentTime);
+  [musicProgress,chatMusicProgress].forEach(progress => { if (!progress) return; progress.value = value; progress.style.setProperty("--music-progress",percent); });
+  musicCurrentTime.textContent = current; chatMusicCurrent.textContent = current;
+  musicUpdateActiveLyric();
+}
+function musicStartSyncLoop(){
+  if (musicPlaybackRaf) cancelAnimationFrame(musicPlaybackRaf);
+  const frame = () => {
+    musicSyncPlaybackUi();
+    musicPlaybackRaf = musicAudio.paused ? null : requestAnimationFrame(frame);
+  };
+  musicPlaybackRaf = requestAnimationFrame(frame);
+}
+function musicStopSyncLoop(){
+  if (musicPlaybackRaf) cancelAnimationFrame(musicPlaybackRaf);
+  musicPlaybackRaf = null;
+  musicSyncPlaybackUi();
 }
 async function musicOpenSong(id){
   const summary = musicSongs.find(song => String(song.id) === String(id)) || { id };
   musicShowView(musicPlayerView);
+  musicSong = { ...summary, id }; musicLyricLines = []; musicActiveLine = -1;
   musicLyrics.innerHTML = '<div class="music-no-lyrics">opening the pages…</div>';
-  musicPlayerTitle.textContent = `${summary.artist || "Unknown artist"} — ${summary.title || "Untitled"}`;
+  chatMusicLyrics.innerHTML = '<div class="music-no-lyrics">opening the pages…</div>';
+  musicPlayerTitle.textContent = summary.title || "Untitled";
+  musicPlayerArtist.textContent = summary.artist || "Unknown artist";
   musicPlayerAdded.textContent = `added by ${summary.addedBy || "someone"}`;
-  const coverUrl = musicCoverUrl(id);
-  musicPlayerBackdrop.style.backgroundImage = summary.hasCover ? `url("${coverUrl.replace(/"/g,"%22")}")` : "linear-gradient(145deg,#2b211b,#0b0a09)";
-  musicPlayerArt.classList.toggle("hidden", !summary.hasCover); musicPlayerPlaceholder.classList.toggle("hidden", !!summary.hasCover);
-  if (summary.hasCover){ musicPlayerArt.src = coverUrl; musicPlayerArt.alt = `${summary.artist || ""} ${summary.title || ""}`; musicPlayerArt.onerror = () => { musicPlayerArt.classList.add("hidden"); musicPlayerPlaceholder.classList.remove("hidden"); }; }
-  musicPlayerPlaceholder.textContent = `${summary.artist || "Unknown artist"}\n${summary.title || "Untitled"}`;
+  musicSyncDock(summary);
   musicAudio.src = musicAudioUrl(id); musicAudio.load(); musicPlay.innerHTML = musicPlayIcon(true);
-  musicProgress.value = 0; musicProgress.style.setProperty("--music-progress","0%"); musicCurrentTime.textContent = "0:00"; musicTotalTime.textContent = "0:00";
+  [musicProgress,chatMusicProgress].forEach(progress => { progress.value = 0; progress.style.setProperty("--music-progress","0%"); });
+  musicCurrentTime.textContent = chatMusicCurrent.textContent = "0:00"; musicTotalTime.textContent = chatMusicTotal.textContent = "0:00";
   musicExpandedLines.clear(); musicEditingLine = -1; musicActiveLine = -1;
   try{
     const response = await fetch(`${MUSIC_API}/song?id=${encodeURIComponent(id)}`, { headers:{ Accept:"application/json" } });
     if (!response.ok) throw new Error(`Song ${response.status}`);
     musicSong = { ...summary, ...(await response.json()), id };
-    musicPlayerTitle.textContent = `${musicSong.artist || "Unknown artist"} — ${musicSong.title || "Untitled"}`;
+    musicPlayerTitle.textContent = musicSong.title || "Untitled";
+    musicPlayerArtist.textContent = musicSong.artist || "Unknown artist";
     musicPlayerAdded.textContent = `added by ${musicSong.addedBy || "someone"}`;
+    musicSyncDock(musicSong);
     musicLyricLines = parseMarginaliaLrc(musicSong.lyrics);
     musicNormalizeAnnotations(musicSong.annotations);
     musicRenderLyrics();
   }catch(error){ console.error("Song details failed", error); musicLyrics.innerHTML = `<div class="music-no-lyrics">couldn't open the lyrics.<br>${escapeHtml(error.message)}</div>`; }
 }
-async function musicSubmitAnnotation(lineIndex){
-  const editor = musicLyrics.querySelector(`[data-editor-line="${lineIndex}"]`), input = editor?.querySelector("input");
+async function musicSubmitAnnotation(lineIndex, root = musicLyrics){
+  const editor = root.querySelector(`[data-editor-line="${lineIndex}"]`), input = editor?.querySelector("input");
   const text = String(input?.value || "").trim();
   if (!text || !musicSong) return;
   const submit = editor.querySelector(".lyric-submit"); submit.disabled = true;
@@ -3641,25 +3730,35 @@ $("#musicAddOpen")?.addEventListener("click", () => { musicShowView(musicAddView
 $("#musicAddBack")?.addEventListener("click", () => musicShowView(musicLibraryView));
 if (musicPlay) musicPlay.addEventListener("click", () => { if (!musicAudio.src) return; if (musicAudio.paused) musicAudio.play().catch(error => showToast(error.message)); else musicAudio.pause(); });
 if (musicAudio){
-  musicAudio.addEventListener("play", () => { musicPlay.innerHTML = musicPlayIcon(false); musicPlay.setAttribute("aria-label","Pause"); });
-  musicAudio.addEventListener("pause", () => { musicPlay.innerHTML = musicPlayIcon(true); musicPlay.setAttribute("aria-label","Play"); });
-  musicAudio.addEventListener("loadedmetadata", () => { musicTotalTime.textContent = musicFormatTime(musicAudio.duration); });
-  musicAudio.addEventListener("timeupdate", () => { const duration = musicAudio.duration || 0, ratio = duration ? musicAudio.currentTime / duration : 0; musicProgress.value = Math.round(ratio * 1000); musicProgress.style.setProperty("--music-progress",`${ratio * 100}%`); musicCurrentTime.textContent = musicFormatTime(musicAudio.currentTime); musicUpdateActiveLyric(); });
-  musicAudio.addEventListener("ended", () => { musicPlay.innerHTML = musicPlayIcon(true); });
+  const syncPlayButtons = paused => {
+    [musicPlay,chatMusicPlay,chatMusicDrawerPlay].forEach(button => { if (!button) return; button.innerHTML = musicPlayIcon(paused); button.setAttribute("aria-label",paused ? "Play" : "Pause"); });
+  };
+  musicAudio.addEventListener("play", () => { syncPlayButtons(false); musicStartSyncLoop(); });
+  musicAudio.addEventListener("pause", () => { syncPlayButtons(true); musicStopSyncLoop(); });
+  musicAudio.addEventListener("loadedmetadata", () => { const total = musicFormatTime(musicAudio.duration); musicTotalTime.textContent = total; chatMusicTotal.textContent = total; });
+  musicAudio.addEventListener("timeupdate", () => { if (musicAudio.paused || document.hidden) musicSyncPlaybackUi(); });
+  musicAudio.addEventListener("ended", () => syncPlayButtons(true));
 }
-if (musicProgress) musicProgress.addEventListener("input", () => { if (musicAudio.duration) musicAudio.currentTime = Number(musicProgress.value) / 1000 * musicAudio.duration; });
-if (musicLyrics){
+if (musicProgress) musicProgress.addEventListener("input", () => { if (musicAudio.duration){ musicAudio.currentTime = Number(musicProgress.value) / 1000 * musicAudio.duration; musicSyncPlaybackUi(); } });
+if (chatMusicProgress) chatMusicProgress.addEventListener("input", () => { if (musicAudio.duration){ musicAudio.currentTime = Number(chatMusicProgress.value) / 1000 * musicAudio.duration; musicSyncPlaybackUi(); } });
+if (chatMusicPlay) chatMusicPlay.addEventListener("click", () => { if (musicAudio.paused) musicAudio.play().catch(error => showToast(error.message)); else musicAudio.pause(); });
+if (chatMusicDrawerPlay) chatMusicDrawerPlay.addEventListener("click", () => { if (musicAudio.paused) musicAudio.play().catch(error => showToast(error.message)); else musicAudio.pause(); });
+$("#chatMusicStop")?.addEventListener("click", musicStopPlayback);
+$("#chatMusicExpand")?.addEventListener("click", () => { chatMusicDock.classList.add("expanded"); musicRenderLyrics(); });
+$("#chatMusicCollapse")?.addEventListener("click", () => chatMusicDock.classList.remove("expanded"));
+function bindMusicLyricRoot(root){
+  if (!root) return;
   const pauseFollow = () => {
     if (musicAutoScrolling) return;
     musicFollowPausedUntil = Date.now() + 3000;
     clearTimeout(musicFollowResumeTimer);
     musicFollowResumeTimer = setTimeout(() => { musicFollowPausedUntil = 0; musicUpdateActiveLyric(true); },3000);
   };
-  musicLyrics.addEventListener("touchstart", pauseFollow, { passive:true }); musicLyrics.addEventListener("wheel", pauseFollow, { passive:true });
-  musicLyrics.addEventListener("click", event => {
+  root.addEventListener("touchstart", pauseFollow, { passive:true }); root.addEventListener("wheel", pauseFollow, { passive:true });
+  root.addEventListener("click", event => {
     const author = event.target.closest("[data-music-author]");
     if (author){ musicAuthor = author.dataset.musicAuthor; localStorage.setItem("marginalia_author",musicAuthor); author.parentElement.querySelectorAll("button").forEach(btn => btn.classList.toggle("active",btn === author)); return; }
-    const submit = event.target.closest("[data-music-submit]"); if (submit){ void musicSubmitAnnotation(Number(submit.dataset.musicSubmit)); return; }
+    const submit = event.target.closest("[data-music-submit]"); if (submit){ void musicSubmitAnnotation(Number(submit.dataset.musicSubmit),root); return; }
     const dot = event.target.closest("[data-note-line]");
     if (dot){ const line = Number(dot.dataset.noteLine); if (musicExpandedLines.has(line)) musicExpandedLines.delete(line); else musicExpandedLines.add(line); musicRenderLyrics(); return; }
     const lineEl = event.target.closest(".lyric-line"); if (!lineEl || event.target.closest(".lyric-editor")) return;
@@ -3668,10 +3767,11 @@ if (musicLyrics){
     musicAudio.currentTime = Number(lineEl.dataset.time) || 0;
     if ((musicLyricLines[line]?.annotations || []).length){ if (musicExpandedLines.has(line)) musicExpandedLines.delete(line); else musicExpandedLines.add(line); musicRenderLyrics(); }
   });
-  musicLyrics.addEventListener("dblclick", event => { const line = event.target.closest(".lyric-line"); if (line && !event.target.closest(".lyric-editor")){ event.preventDefault(); musicOpenEditor(Number(line.dataset.line)); } });
-  musicLyrics.addEventListener("pointerdown", event => { const line = event.target.closest(".lyric-line"); if (!line || event.target.closest("button,input")) return; const index = Number(line.dataset.line); clearTimeout(musicLongPressTimer); musicLongPressTimer = setTimeout(() => { musicLongPressedLine = index; musicOpenEditor(index); }, 620); });
-  ["pointerup","pointercancel","pointermove"].forEach(type => musicLyrics.addEventListener(type, () => { clearTimeout(musicLongPressTimer); musicLongPressTimer = null; }));
+  root.addEventListener("dblclick", event => { const line = event.target.closest(".lyric-line"); if (line && !event.target.closest(".lyric-editor")){ event.preventDefault(); musicOpenEditor(Number(line.dataset.line)); } });
+  root.addEventListener("pointerdown", event => { const line = event.target.closest(".lyric-line"); if (!line || event.target.closest("button,input")) return; const index = Number(line.dataset.line); clearTimeout(musicLongPressTimer); musicLongPressTimer = setTimeout(() => { musicLongPressedLine = index; musicOpenEditor(index); }, 620); });
+  ["pointerup","pointercancel","pointermove"].forEach(type => root.addEventListener(type, () => { clearTimeout(musicLongPressTimer); musicLongPressTimer = null; }));
 }
+[musicLyrics,chatMusicLyrics].forEach(bindMusicLyricRoot);
 if (musicFile) musicFile.addEventListener("change", () => { musicFileName.textContent = musicFile.files?.[0]?.name || "choose an audio file"; });
 $("#musicAddedBy")?.addEventListener("click", event => { const button = event.target.closest("[data-author]"); if (!button) return; musicAuthor = button.dataset.author; localStorage.setItem("marginalia_author",musicAuthor); button.parentElement.querySelectorAll("button").forEach(btn => btn.classList.toggle("active",btn === button)); });
 $("#musicAddedBy")?.querySelectorAll("button").forEach(button => button.classList.toggle("active",button.dataset.author === musicAuthor));
@@ -3686,7 +3786,7 @@ if (musicAddForm) musicAddForm.addEventListener("submit", async event => {
   }catch(error){ console.error("Music upload failed",error); musicUploadStatus.textContent = error.message; }
   finally{ musicUploadSubmit.disabled = false; }
 });
-if (musicPlay) musicPlay.innerHTML = musicPlayIcon(true);
+[musicPlay,chatMusicPlay,chatMusicDrawerPlay].forEach(button => { if (button) button.innerHTML = musicPlayIcon(true); });
 document.addEventListener("keydown", event => { if (event.key === "Escape" && musicPanel && !musicPanel.classList.contains("hidden")){ if (!musicLibraryView.classList.contains("hidden")) closeMusicPage(); else musicBackToLibrary(); } });
 
 if (conversationBack) conversationBack.addEventListener("click", showMenuFromConversations);
