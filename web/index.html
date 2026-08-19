@@ -1633,6 +1633,7 @@
   .music-added-tag{ display:inline-block; margin-top:7px; color:#a69b91; font:9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.03em; }
   .music-count{ margin:32px 0 4px; text-align:center; color:#514b47; font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.12em; }
   .music-empty,.music-error,.music-loading{ grid-column:1/-1; padding:70px 20px; text-align:center; color:var(--music-dim); font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .music-retry{ display:block; margin:15px auto 0; border:1px solid rgba(196,149,106,.34); border-radius:999px; padding:8px 15px; color:var(--music-accent); background:transparent; font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; }
 
   .music-player-view{ background:#0b0a09; }
   .music-player-header{ flex:none; display:grid; grid-template-columns:42px minmax(0,1fr) 42px; align-items:center; padding:calc(env(safe-area-inset-top) + 11px) 16px 10px; }
@@ -3487,6 +3488,9 @@ if (menuPanel){
 
 /* ── MARGINALIA · music library, synced lyrics, annotations ── */
 const MUSIC_API = "https://music-library.chenv354.workers.dev";
+const MUSIC_LIBRARY_CACHE_KEY = "marginalia_library_cache_v1";
+const MUSIC_SONG_CACHE_PREFIX = "marginalia_song_v1:";
+const MUSIC_FETCH_TIMEOUT = 6500;
 const musicPanel = $("#musicPanel"), musicLibraryView = $("#musicLibraryView"), musicPlayerView = $("#musicPlayerView"), musicAddView = $("#musicAddView");
 const musicGrid = $("#musicGrid"), musicCount = $("#musicCount"), musicAudio = $("#musicAudio"), musicLyrics = $("#musicLyrics");
 const musicPlay = $("#musicPlay"), musicProgress = $("#musicProgress"), musicCurrentTime = $("#musicCurrentTime"), musicTotalTime = $("#musicTotalTime");
@@ -3498,6 +3502,47 @@ let musicCloseTimer = null, musicSongs = [], musicSong = null, musicLyricLines =
 let musicExpandedLines = new Set(), musicEditingLine = -1, musicAuthor = localStorage.getItem("marginalia_author") || "Kitty";
 let musicFollowPausedUntil = 0, musicFollowResumeTimer = null, musicAutoScrolling = false, musicLongPressTimer = null, musicLongPressedLine = -1;
 let musicPlaybackRaf = null;
+let musicLibraryRequest = null, musicAudioRetryCount = 0;
+
+function musicDelay(milliseconds){ return new Promise(resolve => setTimeout(resolve,milliseconds)); }
+async function musicFetchJson(path, retries = 1){
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt++){
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(),MUSIC_FETCH_TIMEOUT);
+    try{
+      const response = await fetch(`${MUSIC_API}${path}`, { cache:"no-store", headers:{ Accept:"application/json" }, signal:controller.signal });
+      if (!response.ok) throw new Error(`Music API ${response.status}`);
+      const data = await response.json();
+      clearTimeout(timeout);
+      return data;
+    }catch(error){
+      clearTimeout(timeout);
+      lastError = error && error.name === "AbortError" ? new Error("Connection timed out") : error;
+    }
+    if (attempt < retries) await musicDelay(500 * Math.pow(2,attempt));
+  }
+  throw lastError || new Error("Music library unavailable");
+}
+function musicReadLibraryCache(){
+  try{
+    const cached = JSON.parse(localStorage.getItem(MUSIC_LIBRARY_CACHE_KEY) || "null");
+    return cached && Array.isArray(cached.songs) ? cached.songs : [];
+  }catch(_){ return []; }
+}
+function musicWriteLibraryCache(songs){
+  try{ localStorage.setItem(MUSIC_LIBRARY_CACHE_KEY,JSON.stringify({ savedAt:Date.now(),songs })); }catch(_){ }
+}
+function musicReadSongCache(id){
+  try{
+    const cached = JSON.parse(localStorage.getItem(`${MUSIC_SONG_CACHE_PREFIX}${id}`) || "null");
+    return cached && cached.song ? cached.song : null;
+  }catch(_){ return null; }
+}
+function musicWriteSongCache(song){
+  if (!song || song.id == null) return;
+  try{ localStorage.setItem(`${MUSIC_SONG_CACHE_PREFIX}${song.id}`,JSON.stringify({ savedAt:Date.now(),song })); }catch(_){ }
+}
 
 function musicShowView(view){
   [musicLibraryView,musicPlayerView,musicAddView].forEach(el => el && el.classList.toggle("hidden", el !== view));
@@ -3554,19 +3599,27 @@ function musicRenderLibrary(){
   if (musicCount) musicCount.textContent = `songs: ${musicSongs.length}`;
 }
 async function musicLoadLibrary(force = false){
-  if (!force && musicSongs.length){ musicRenderLibrary(); return; }
-  musicGrid.innerHTML = '<div class="music-loading">opening the library…</div>';
-  try{
-    const response = await fetch(`${MUSIC_API}/list`, { headers:{ Accept:"application/json" } });
-    if (!response.ok) throw new Error(`Library ${response.status}`);
-    const data = await response.json();
-    musicSongs = Array.isArray(data) ? data : [];
-    musicRenderLibrary();
-  }catch(error){
-    console.error("Music library failed", error);
-    musicGrid.innerHTML = `<div class="music-error">couldn't open the library.<br>${escapeHtml(error.message)}</div>`;
-    if (musicCount) musicCount.textContent = "songs: —";
-  }
+  if (musicLibraryRequest && !force) return musicLibraryRequest;
+  if (!musicSongs.length){
+    const cached = musicReadLibraryCache();
+    if (cached.length){ musicSongs = cached; musicRenderLibrary(); }
+    else musicGrid.innerHTML = '<div class="music-loading">opening the library…</div>';
+  }else musicRenderLibrary();
+  musicLibraryRequest = (async () => {
+    try{
+      const data = await musicFetchJson("/list");
+      musicSongs = Array.isArray(data) ? data : [];
+      musicWriteLibraryCache(musicSongs);
+      musicRenderLibrary();
+    }catch(error){
+      console.error("Music library failed", error);
+      if (!musicSongs.length){
+        musicGrid.innerHTML = `<div class="music-error">couldn't reach the library.<br>${escapeHtml(error.message)}<button class="music-retry" type="button" data-music-retry>TRY AGAIN</button></div>`;
+        if (musicCount) musicCount.textContent = "songs: —";
+      }
+    }finally{ musicLibraryRequest = null; }
+  })();
+  return musicLibraryRequest;
 }
 function openMusicPage(){
   if (!musicPanel) return;
@@ -3679,6 +3732,7 @@ function musicStopSyncLoop(){
 }
 async function musicOpenSong(id){
   const summary = musicSongs.find(song => String(song.id) === String(id)) || { id };
+  const cachedSong = musicReadSongCache(id);
   musicShowView(musicPlayerView);
   musicSong = { ...summary, id }; musicLyricLines = []; musicActiveLine = -1;
   musicLyrics.innerHTML = '<div class="music-no-lyrics">opening the pages…</div>';
@@ -3687,14 +3741,12 @@ async function musicOpenSong(id){
   musicPlayerArtist.textContent = summary.artist || "Unknown artist";
   musicPlayerAdded.textContent = `added by ${summary.addedBy || "someone"}`;
   musicSyncDock(summary);
-  musicAudio.src = musicAudioUrl(id); musicAudio.load(); musicPlay.innerHTML = musicPlayIcon(true);
+  musicAudioRetryCount = 0; musicAudio.src = musicAudioUrl(id); musicAudio.load(); musicPlay.innerHTML = musicPlayIcon(true);
   [musicProgress,chatMusicProgress].forEach(progress => { progress.value = 0; progress.style.setProperty("--music-progress","0%"); });
   musicCurrentTime.textContent = chatMusicCurrent.textContent = "0:00"; musicTotalTime.textContent = chatMusicTotal.textContent = "0:00";
   musicExpandedLines.clear(); musicEditingLine = -1; musicActiveLine = -1;
-  try{
-    const response = await fetch(`${MUSIC_API}/song?id=${encodeURIComponent(id)}`, { headers:{ Accept:"application/json" } });
-    if (!response.ok) throw new Error(`Song ${response.status}`);
-    musicSong = { ...summary, ...(await response.json()), id };
+  const applySong = song => {
+    musicSong = { ...summary, ...song, id };
     musicPlayerTitle.textContent = musicSong.title || "Untitled";
     musicPlayerArtist.textContent = musicSong.artist || "Unknown artist";
     musicPlayerAdded.textContent = `added by ${musicSong.addedBy || "someone"}`;
@@ -3702,7 +3754,19 @@ async function musicOpenSong(id){
     musicLyricLines = parseMarginaliaLrc(musicSong.lyrics);
     musicNormalizeAnnotations(musicSong.annotations);
     musicRenderLyrics();
-  }catch(error){ console.error("Song details failed", error); musicLyrics.innerHTML = `<div class="music-no-lyrics">couldn't open the lyrics.<br>${escapeHtml(error.message)}</div>`; }
+  };
+  if (cachedSong) applySong(cachedSong);
+  try{
+    const freshSong = { ...summary, ...(await musicFetchJson(`/song?id=${encodeURIComponent(id)}`)), id };
+    musicWriteSongCache(freshSong);
+    applySong(freshSong);
+  }catch(error){
+    console.error("Song details failed", error);
+    if (!cachedSong){
+      const failure = `<div class="music-no-lyrics">couldn't open the lyrics.<br>${escapeHtml(error.message)}</div>`;
+      musicLyrics.innerHTML = failure; chatMusicLyrics.innerHTML = failure;
+    }else showToast("Showing saved lyrics — library is offline");
+  }
 }
 async function musicSubmitAnnotation(lineIndex, root = musicLyrics){
   const editor = root.querySelector(`[data-editor-line="${lineIndex}"]`), input = editor?.querySelector("input");
@@ -3723,12 +3787,30 @@ function musicOpenEditor(lineIndex){
   musicEditingLine = lineIndex; musicExpandedLines.add(lineIndex); musicRenderLyrics();
 }
 
-if (musicGrid) musicGrid.addEventListener("click", event => { const card = event.target.closest("[data-song-id]"); if (card) void musicOpenSong(card.dataset.songId); });
+if (musicGrid) musicGrid.addEventListener("click", event => {
+  if (event.target.closest("[data-music-retry]")){ void musicLoadLibrary(true); return; }
+  const card = event.target.closest("[data-song-id]"); if (card) void musicOpenSong(card.dataset.songId);
+});
 $("#musicHomeBack")?.addEventListener("click", closeMusicPage);
 $("#musicPlayerBack")?.addEventListener("click", musicBackToLibrary);
 $("#musicAddOpen")?.addEventListener("click", () => { musicShowView(musicAddView); musicUploadStatus.textContent = ""; });
 $("#musicAddBack")?.addEventListener("click", () => musicShowView(musicLibraryView));
-if (musicPlay) musicPlay.addEventListener("click", () => { if (!musicAudio.src) return; if (musicAudio.paused) musicAudio.play().catch(error => showToast(error.message)); else musicAudio.pause(); });
+async function musicTogglePlayback(){
+  if (!musicAudio || !musicSong) return;
+  if (!musicAudio.paused){ musicAudio.pause(); return; }
+  if (musicAudio.error || !musicAudio.src){
+    const resumeAt = Number.isFinite(musicAudio.currentTime) ? musicAudio.currentTime : 0;
+    musicAudioRetryCount += 1;
+    musicAudio.src = `${musicAudioUrl(musicSong.id)}&retry=${Date.now()}-${musicAudioRetryCount}`;
+    if (resumeAt > 0) musicAudio.addEventListener("loadedmetadata", () => {
+      if (resumeAt < musicAudio.duration) musicAudio.currentTime = resumeAt;
+    }, { once:true });
+    musicAudio.load();
+  }
+  try{ await musicAudio.play(); }
+  catch(error){ console.error("Music playback failed",error); showToast("Audio connection failed — tap play to retry"); }
+}
+if (musicPlay) musicPlay.addEventListener("click", () => { void musicTogglePlayback(); });
 if (musicAudio){
   const syncPlayButtons = paused => {
     [musicPlay,chatMusicPlay,chatMusicDrawerPlay].forEach(button => { if (!button) return; button.innerHTML = musicPlayIcon(paused); button.setAttribute("aria-label",paused ? "Play" : "Pause"); });
@@ -3738,11 +3820,12 @@ if (musicAudio){
   musicAudio.addEventListener("loadedmetadata", () => { const total = musicFormatTime(musicAudio.duration); musicTotalTime.textContent = total; chatMusicTotal.textContent = total; });
   musicAudio.addEventListener("timeupdate", () => { if (musicAudio.paused || document.hidden) musicSyncPlaybackUi(); });
   musicAudio.addEventListener("ended", () => syncPlayButtons(true));
+  musicAudio.addEventListener("error", () => { musicStopSyncLoop(); syncPlayButtons(true); });
 }
 if (musicProgress) musicProgress.addEventListener("input", () => { if (musicAudio.duration){ musicAudio.currentTime = Number(musicProgress.value) / 1000 * musicAudio.duration; musicSyncPlaybackUi(); } });
 if (chatMusicProgress) chatMusicProgress.addEventListener("input", () => { if (musicAudio.duration){ musicAudio.currentTime = Number(chatMusicProgress.value) / 1000 * musicAudio.duration; musicSyncPlaybackUi(); } });
-if (chatMusicPlay) chatMusicPlay.addEventListener("click", () => { if (musicAudio.paused) musicAudio.play().catch(error => showToast(error.message)); else musicAudio.pause(); });
-if (chatMusicDrawerPlay) chatMusicDrawerPlay.addEventListener("click", () => { if (musicAudio.paused) musicAudio.play().catch(error => showToast(error.message)); else musicAudio.pause(); });
+if (chatMusicPlay) chatMusicPlay.addEventListener("click", () => { void musicTogglePlayback(); });
+if (chatMusicDrawerPlay) chatMusicDrawerPlay.addEventListener("click", () => { void musicTogglePlayback(); });
 $("#chatMusicStop")?.addEventListener("click", musicStopPlayback);
 $("#chatMusicExpand")?.addEventListener("click", () => { chatMusicDock.classList.add("expanded"); musicRenderLyrics(); });
 $("#chatMusicCollapse")?.addEventListener("click", () => chatMusicDock.classList.remove("expanded"));
