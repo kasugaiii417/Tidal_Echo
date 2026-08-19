@@ -3689,6 +3689,22 @@ function musicRelativeTime(value){
   const months = Math.floor(days / 30); if (months < 12) return `${months} mo ago`;
   const years = Math.floor(days / 365); return `${years} yr ago`;
 }
+async function musicCreateAnnotation({ id,line,lyric,text,author }){
+  const params = new URLSearchParams({
+    id:String(id),
+    text:String(text),
+    author:String(author)
+  });
+  if (lyric != null && String(lyric).trim()) params.set("lyric",String(lyric));
+  else if (line != null) params.set("line",String(line));
+  const response = await fetch(`${MUSIC_API}/annotate?${params.toString()}`, {
+    method:"GET",
+    cache:"no-store",
+    headers:{ Accept:"application/json" }
+  });
+  if (!response.ok) throw new Error(`Annotation ${response.status}: ${(await response.text().catch(() => "")).slice(0,160)}`);
+  return response.json().catch(() => null);
+}
 function parseMarginaliaLrc(lrc){
   const rows = [];
   String(lrc || "").split(/\r?\n/).forEach(raw => {
@@ -3866,12 +3882,7 @@ async function musicSubmitSelection(){
   if (!text || !line) return;
   document.querySelectorAll("[data-music-selection-send]").forEach(button => { button.disabled = true; });
   try{
-    const response = await fetch(`${MUSIC_API}/annotate`, {
-      method:"POST", headers:{ "Content-Type":"application/json", Accept:"application/json" },
-      body:JSON.stringify({ id:musicSong.id, lyric:line.text, text, author:"Kitty" })
-    });
-    if (!response.ok) throw new Error(`Annotation ${response.status}: ${(await response.text().catch(() => "")).slice(0,160)}`);
-    const returned = await response.json().catch(() => null);
+    const returned = await musicCreateAnnotation({ id:musicSong.id, lyric:line.text, text, author:"Kitty" });
     const note = returned?.annotation
       ? { ...returned.annotation, line:lineIndex, lyric:returned.annotation.lyric || line.text, author:returned.annotation.author || "Kitty" }
       : { line:lineIndex, lyric:line.text, text, author:"Kitty", timestamp:new Date().toISOString() };
@@ -4033,9 +4044,7 @@ async function musicSubmitAnnotation(lineIndex, root = musicLyrics){
   if (!text || !musicSong) return;
   const submit = editor.querySelector(".lyric-submit"); submit.disabled = true;
   try{
-    const response = await fetch(`${MUSIC_API}/annotate`, { method:"POST", headers:{ "Content-Type":"application/json", Accept:"application/json" }, body:JSON.stringify({ id:musicSong.id, line:lineIndex, text, author:musicAuthor }) });
-    if (!response.ok) throw new Error(`Annotation ${response.status}: ${(await response.text().catch(() => "")).slice(0,160)}`);
-    const returned = await response.json().catch(() => null);
+    const returned = await musicCreateAnnotation({ id:musicSong.id, line:lineIndex, text, author:musicAuthor });
     const note = returned && returned.annotation ? returned.annotation : { line:lineIndex, text, author:musicAuthor, timestamp:new Date().toISOString() };
     const line = musicLyricLines[lineIndex];
     if (line) line.annotations.push(note);
