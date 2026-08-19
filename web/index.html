@@ -3696,7 +3696,7 @@ async function musicCreateAnnotation({ id,line,lyric,text,author }){
     author:String(author)
   });
   if (lyric != null && String(lyric).trim()) params.set("lyric",String(lyric));
-  else if (line != null) params.set("line",String(line));
+  if (line != null) params.set("line",String(line));
   const response = await fetch(`${MUSIC_API}/annotate?${params.toString()}`, {
     method:"GET",
     cache:"no-store",
@@ -3882,7 +3882,7 @@ async function musicSubmitSelection(){
   if (!text || !line) return;
   document.querySelectorAll("[data-music-selection-send]").forEach(button => { button.disabled = true; });
   try{
-    const returned = await musicCreateAnnotation({ id:musicSong.id, lyric:line.text, text, author:"Kitty" });
+    const returned = await musicCreateAnnotation({ id:musicSong.id, line:lineIndex, lyric:line.text, text, author:"Kitty" });
     const note = returned?.annotation
       ? { ...returned.annotation, line:lineIndex, lyric:returned.annotation.lyric || line.text, author:returned.annotation.author || "Kitty" }
       : { line:lineIndex, lyric:line.text, text, author:"Kitty", timestamp:new Date().toISOString() };
