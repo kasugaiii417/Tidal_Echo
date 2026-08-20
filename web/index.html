@@ -4313,8 +4313,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   const DEEPGRAM_STT_BASE = "wss://deepgram-proxy.chenv354.workers.dev";
   const VOICE_STT_LANGUAGE_KEY = "companion_voice_stt_language";
   const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
-  const CALL_TTS_VOLUME_LOW = 0.35;
-  const CALL_TTS_VOLUME_HIGH = 0.70;
+  const CALL_TTS_VOLUME_LOW = 0.18;
+  const CALL_TTS_VOLUME_HIGH = 0.45;
 
   let open = false;
   let minimized = false;
@@ -4333,7 +4333,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let transcriptPaintRaf = null, transcriptState = { text:"", caret:false };
   let audioCtx = null, analyser = null, freqData = null;
   let speakingUtterance = null;
-  let ttsAudio = null, ttsUrl = "", speakTimeout = null, resumeTimer = null;
+  let ttsAudio = null, ttsUrl = "", ttsMediaSource = null, ttsMediaGain = null, speakTimeout = null, resumeTimer = null;
   let speakSeq = 0;
   let callId = "", callStartedAt = 0;
   let callTurnBusy = false, callTurnController = null, ttsSource = null, ttsGainNode = null;
@@ -4787,6 +4787,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       try{ URL.revokeObjectURL(ttsUrl); }catch(e){}
       ttsUrl = "";
     }
+    if (ttsMediaSource){ try{ ttsMediaSource.disconnect(); }catch(e){} ttsMediaSource = null; }
+    if (ttsMediaGain){ try{ ttsMediaGain.disconnect(); }catch(e){} ttsMediaGain = null; }
     try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
     if (ttsSource){ try{ ttsSource.stop(); }catch(e){} ttsSource = null; }
     if (ttsGainNode){ try{ ttsGainNode.disconnect(); }catch(e){} ttsGainNode = null; }
@@ -4801,11 +4803,14 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (ttsGainNode){
       try{ ttsGainNode.gain.setValueAtTime(volume, ttsGainNode.context.currentTime); }catch(e){ ttsGainNode.gain.value = volume; }
     }
-    if (ttsAudio) ttsAudio.volume = volume;
+    if (ttsMediaGain){
+      try{ ttsMediaGain.gain.setValueAtTime(volume, ttsMediaGain.context.currentTime); }catch(e){ ttsMediaGain.gain.value = volume; }
+    }
+    if (ttsAudio) ttsAudio.volume = ttsMediaGain ? 1 : volume;
     if (callSpeakerBtn){
       callSpeakerBtn.classList.toggle("active", speakerLoud);
       callSpeakerBtn.setAttribute("aria-pressed", speakerLoud ? "true" : "false");
-      callSpeakerBtn.title = speakerLoud ? "TTS volume 70%" : "TTS volume 35%";
+      callSpeakerBtn.title = speakerLoud ? "TTS volume 45%" : "TTS volume 18%";
     }
   }
 
@@ -4923,6 +4928,51 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     return ttsCtx;
   }
 
+  function silentWavBlob(){
+    const sampleRate = 8000, samples = 800;
+    const buffer = new ArrayBuffer(44 + samples * 2);
+    const view = new DataView(buffer);
+    const write = (offset,text) => { for (let i = 0; i < text.length; i++) view.setUint8(offset + i,text.charCodeAt(i)); };
+    write(0,"RIFF"); view.setUint32(4,36 + samples * 2,true); write(8,"WAVE");
+    write(12,"fmt "); view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+    view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate * 2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
+    write(36,"data"); view.setUint32(40,samples * 2,true);
+    return new Blob([buffer],{ type:"audio/wav" });
+  }
+
+  function unlockCallTtsAudio(){
+    const ctx = ensureTtsCtx();
+    const audio = new Audio();
+    ttsAudio = audio;
+    audio.preload = "auto";
+    audio.playsInline = true;
+    if (ctx){
+      try{
+        ttsMediaSource = ctx.createMediaElementSource(audio);
+        ttsMediaGain = ctx.createGain();
+        ttsMediaGain.gain.value = callTtsVolume();
+        ttsMediaSource.connect(ttsMediaGain);
+        ttsMediaGain.connect(ctx.destination);
+        audio.volume = 1;
+      }catch(error){
+        ttsMediaSource = null;
+        ttsMediaGain = null;
+        audio.volume = callTtsVolume();
+      }
+    }
+    const unlockUrl = URL.createObjectURL(silentWavBlob());
+    audio.src = unlockUrl;
+    const unlocked = audio.play();
+    if (unlocked && typeof unlocked.then === "function") unlocked.then(() => {
+      audio.pause();
+      try{ audio.currentTime = 0; }catch(_){ }
+      audio.removeAttribute("src");
+      audio.load();
+      URL.revokeObjectURL(unlockUrl);
+      applyCallTtsVolume();
+    }).catch(() => { URL.revokeObjectURL(unlockUrl); });
+  }
+
   function minimizeCall(){
     if (!open || minimized) return;
     minimized = true;
@@ -4940,7 +4990,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (open) return;
     open = true;
     hideIncomingCall();
-    ensureTtsCtx();
+    unlockCallTtsAudio();
     callId = "call-" + Date.now().toString(36);
     callStartedAt = Date.now();
     insertVoiceCallDivider("started");
@@ -5115,13 +5165,17 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       console.warn("[speak] WebAudio playback failed, trying HTMLAudio:", e);
       if (blob && open){
         try{
-          clearSpeechPlayback();
+          if (ttsSource){ try{ ttsSource.stop(); }catch(e){} ttsSource = null; }
+          if (ttsGainNode){ try{ ttsGainNode.disconnect(); }catch(e){} ttsGainNode = null; }
+          if (ttsUrl){ try{ URL.revokeObjectURL(ttsUrl); }catch(e){} ttsUrl = ""; }
           ttsUrl = URL.createObjectURL(blob);
-          const audio = new Audio(ttsUrl);
+          const audio = ttsAudio || new Audio();
           ttsAudio = audio;
+          audio.src = ttsUrl;
           audio.preload = "auto";
           audio.playsInline = true;
-          audio.volume = callTtsVolume();
+          audio.volume = ttsMediaGain ? 1 : callTtsVolume();
+          audio.load();
           await new Promise((resolve, reject) => {
             let settled = false;
             const finish = (error) => {
@@ -5146,7 +5200,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
               pulse();
             }).catch(finish);
           });
-          if (ttsAudio === audio) ttsAudio = null;
+          audio.removeAttribute("src");
+          audio.load();
           if (ttsUrl){ URL.revokeObjectURL(ttsUrl); ttsUrl = ""; }
           return;
         }catch(fallbackError){
