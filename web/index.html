@@ -2692,6 +2692,15 @@
         <div class="push-hint">fetch_json · fetch_txt</div>
       </section>
 
+      <section class="settings-card">
+        <div class="settings-label">Voice recognition <i class="info-i" title="语音通话的 Deepgram 识别语言；下一次监听连接时生效">i</i></div>
+        <div class="segmented" id="voiceLanguageSeg" role="group" aria-label="语音识别语言">
+          <button type="button" data-val="en" class="active">English</button>
+          <button type="button" data-val="zh-CN">中文</button>
+        </div>
+        <div class="push-hint">Deepgram Nova-3</div>
+      </section>
+
       <!-- effort（占位 · 假按键）-->
       <section class="settings-card">
         <div class="settings-label">effort <i class="info-i" title="推理强度：越高越细，耗时越长">i</i></div>
@@ -3653,7 +3662,7 @@ function musicAnnotationTimestamp(note){
 function musicContextPrefix(previousSendAt){
   if (!musicSong || !musicAudio || musicAudio.paused || musicAudio.ended) return "";
   const title = musicSong.title || "Untitled", artist = musicSong.artist || "Unknown artist";
-  let prefix = `[♪ Now Playing: ${title} — ${artist}, ${musicFormatTime(musicAudio.currentTime)}]`;
+  let prefix = `[♪ Now Playing: ${title} — ${artist} · listened ${musicFormatTime(musicAudio.currentTime)}]`;
   const notes = [];
   musicLyricLines.forEach(line => (line.annotations || []).forEach(note => notes.push({ line, note })));
   if (notes.length){
@@ -4301,7 +4310,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   const callSpeakerBtn = $("#callSpeakerBtn");
 
   const VU_BARS = 16;   // 每侧声纹竖条数
-  const DEEPGRAM_STT_URL = "wss://deepgram-proxy.chenv354.workers.dev?model=nova-3&language=multi";
+  const DEEPGRAM_STT_BASE = "wss://deepgram-proxy.chenv354.workers.dev";
+  const VOICE_STT_LANGUAGE_KEY = "companion_voice_stt_language";
   const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
   const CALL_TTS_VOLUME_LOW = 0.35;
   const CALL_TTS_VOLUME_HIGH = 0.70;
@@ -4330,6 +4340,16 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let incomingOpen = false;
   let pendingIncomingText = "";
   let pendingRemoteHangup = false;
+
+  function deepgramSttUrl(){
+    let language = "en";
+    try{
+      const saved = localStorage.getItem(VOICE_STT_LANGUAGE_KEY);
+      if (saved === "zh-CN") language = saved;
+    }catch(_){ }
+    const params = new URLSearchParams({ model:"nova-3", language });
+    return `${DEEPGRAM_STT_BASE}?${params.toString()}`;
+  }
 
   function buildVu(){
     if (waveBuilt) return;
@@ -4644,7 +4664,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   function connectDeepgramSocket(generation){
     if (!deepgramWanted || generation !== deepgramGeneration || !open || muted || callTurnBusy) return;
     let socket;
-    try{ socket = new WebSocket(DEEPGRAM_STT_URL); }
+    try{ socket = new WebSocket(deepgramSttUrl()); }
     catch(error){
       setTranscript("Deepgram connection failed.", false);
       return;
@@ -5285,6 +5305,7 @@ function wireSegmented(seg, storeKey){
 wireSegmented(modelSeg, "companion_pick_model");
 wireSegmented(effortSeg, "companion_pick_effort");
 wireSegmented(fetchToolsSeg, "companion_fetch_tools");
+wireSegmented($("#voiceLanguageSeg"), "companion_voice_stt_language");
 
 function fetchToolsEnabled(){
   return localStorage.getItem("companion_fetch_tools") !== "off";
