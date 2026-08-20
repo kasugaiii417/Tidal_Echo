@@ -4313,8 +4313,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   const DEEPGRAM_STT_BASE = "wss://deepgram-proxy.chenv354.workers.dev";
   const VOICE_STT_LANGUAGE_KEY = "companion_voice_stt_language";
   const DEEPGRAM_MAX_BUFFERED_BYTES = 256 * 1024;
-  const CALL_TTS_VOLUME_LOW = 0.18;
-  const CALL_TTS_VOLUME_HIGH = 0.45;
+  const CALL_TTS_VOLUME_LOW = 0.10;
+  const CALL_TTS_VOLUME_HIGH = 0.35;
 
   let open = false;
   let minimized = false;
@@ -4340,6 +4340,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let incomingOpen = false;
   let pendingIncomingText = "";
   let pendingRemoteHangup = false;
+  let callWakeLock = null;
 
   function deepgramSttUrl(){
     let language = "en";
@@ -4810,8 +4811,26 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (callSpeakerBtn){
       callSpeakerBtn.classList.toggle("active", speakerLoud);
       callSpeakerBtn.setAttribute("aria-pressed", speakerLoud ? "true" : "false");
-      callSpeakerBtn.title = speakerLoud ? "TTS volume 45%" : "TTS volume 18%";
+      callSpeakerBtn.title = speakerLoud ? "TTS volume 35%" : "TTS volume 10%";
     }
+  }
+
+  async function acquireCallWakeLock(){
+    if (!open || document.visibilityState !== "visible" || !navigator.wakeLock || callWakeLock) return;
+    try{
+      const sentinel = await navigator.wakeLock.request("screen");
+      if (!open){ await sentinel.release().catch(() => {}); return; }
+      callWakeLock = sentinel;
+      sentinel.addEventListener("release",() => { if (callWakeLock === sentinel) callWakeLock = null; },{ once:true });
+    }catch(error){
+      console.warn("Voice call wake lock unavailable",error);
+    }
+  }
+
+  function releaseCallWakeLock(){
+    const sentinel = callWakeLock;
+    callWakeLock = null;
+    if (sentinel) void sentinel.release().catch(() => {});
   }
 
   function resumeListeningSoon(delay = 300){
@@ -4990,6 +5009,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (open) return;
     open = true;
     hideIncomingCall();
+    void acquireCallWakeLock();
     unlockCallTtsAudio();
     callId = "call-" + Date.now().toString(36);
     callStartedAt = Date.now();
@@ -5029,6 +5049,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     insertVoiceCallDivider("ended");
     insertCallDurationMessage(endedAt, endedBy);
     open = false;
+    releaseCallWakeLock();
     minimized = false;
     privateMode = false;
     stopAudioSense();
@@ -5262,6 +5283,9 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   if (incomingAccept) incomingAccept.addEventListener("click", () => { void acceptIncomingCall(); });
   if (incomingDecline) incomingDecline.addEventListener("click", hideIncomingCall);
   if (incomingScrim) incomingScrim.addEventListener("click", hideIncomingCall);
+  document.addEventListener("visibilitychange",() => {
+    if (open && document.visibilityState === "visible") void acquireCallWakeLock();
+  });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (open) closeCall();
