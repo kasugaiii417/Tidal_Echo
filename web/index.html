@@ -1988,17 +1988,23 @@
   #callOverlay.dark-mode .call-sheet{
     background-color: #0b0a09;
     background-image:
-      radial-gradient(circle at 50% 22%, rgba(196,149,106,.11), transparent 38%),
+      radial-gradient(circle 190px at 50% 24%, rgba(196,149,106,.045), transparent 100%),
       linear-gradient(180deg, #110f0d 0%, #0b0a09 60%, #080706 100%);
   }
   #callOverlay.dark-mode .call-scrim{ background: rgba(11,10,9,.72); }
   #callOverlay.dark-mode .call-avatar-ring{
     box-shadow:
-      0 12px 38px rgba(0,0,0,.42),
-      0 0 calc(16px + 34px * var(--ring-level)) calc(2px + 12px * var(--ring-level)) rgba(196,149,106,.24);
+      0 10px 26px rgba(0,0,0,.38),
+      0 0 calc(7px + 16px * var(--ring-level)) calc(1px + 5px * var(--ring-level)) rgba(196,149,106,.15);
   }
   #callOverlay.dark-mode .call-avatar-img{ box-shadow: inset 0 0 0 1px rgba(232,224,212,.13); }
   #callOverlay.dark-mode .call-vu i{ background: #c4956a; }
+  #callOverlay.dark-mode .call-mini{
+    background: #0b0a09;
+    color: #e8e0d4;
+    border-bottom: 1px solid rgba(196,149,106,.18);
+  }
+  #callOverlay.dark-mode .call-mini-dot{ background: #c4956a; }
 
   /* ── Avatar stage: 头像 + 两翼声纹 ── */
   .call-avatar-stage{
@@ -2222,7 +2228,7 @@
     border: 0; padding: 0; cursor: pointer;
     background: transparent;
     color: var(--text-soft);
-    transform: translateY(8px);
+    transform: translateY(-2px);
     -webkit-tap-highlight-color: transparent;
   }
   .call-ctrl-btn > svg{
@@ -2248,10 +2254,10 @@
     margin-top: clamp(20px, 4vw, 32px);
     width: clamp(64px, 15.5vw, 74px); height: clamp(64px, 15.5vw, 74px);
     border: 0; border-radius: 50%; padding: 0; cursor: pointer;
-    background: #c4956a;
-    color: #17120e;
+    background: var(--call-hangup-bg);
+    color: #fff;
     display: grid; place-items: center;
-    box-shadow: 0 10px 26px rgba(196,149,106,.30);
+    box-shadow: 0 10px 26px var(--call-hangup-shadow);
     transition: transform .15s ease, filter .2s ease;
     flex-shrink: 0;
   }
