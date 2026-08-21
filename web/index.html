@@ -1968,6 +1968,38 @@
   }
   .call-overlay.open .call-sheet{ opacity: 1; pointer-events: auto; transform: translateY(0); }
 
+  /* Voice-call dark palette: warm black, champagne and warm white. */
+  #callOverlay.dark-mode{
+    --text: #e8e0d4;
+    --text-soft: #b9aaa0;
+    --text-faint: #7f746d;
+    --accent: #c4956a;
+    --accent-fg: #17120e;
+    --think-flourish: #c4956a;
+    --think-label: #a8917e;
+    --card-bg: rgba(232,224,212,.07);
+    --card-line: rgba(196,149,106,.20);
+    --call-glass-top: rgba(232,224,212,.105);
+    --call-glass-bot: rgba(196,149,106,.055);
+    --call-glass-edge: rgba(196,149,106,.22);
+    --call-glass-hi: rgba(232,224,212,.13);
+    --call-glass-shadow: 0 20px 50px rgba(0,0,0,.34);
+  }
+  #callOverlay.dark-mode .call-sheet{
+    background-color: #0b0a09;
+    background-image:
+      radial-gradient(circle at 50% 22%, rgba(196,149,106,.11), transparent 38%),
+      linear-gradient(180deg, #110f0d 0%, #0b0a09 60%, #080706 100%);
+  }
+  #callOverlay.dark-mode .call-scrim{ background: rgba(11,10,9,.72); }
+  #callOverlay.dark-mode .call-avatar-ring{
+    box-shadow:
+      0 12px 38px rgba(0,0,0,.42),
+      0 0 calc(16px + 34px * var(--ring-level)) calc(2px + 12px * var(--ring-level)) rgba(196,149,106,.24);
+  }
+  #callOverlay.dark-mode .call-avatar-img{ box-shadow: inset 0 0 0 1px rgba(232,224,212,.13); }
+  #callOverlay.dark-mode .call-vu i{ background: #c4956a; }
+
   /* ── Avatar stage: 头像 + 两翼声纹 ── */
   .call-avatar-stage{
     display: flex; align-items: center; justify-content: center;
@@ -2180,16 +2212,17 @@
 
   /* ── Controls row ── */
   .call-controls{
-    display: flex; align-items: flex-start; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     gap: clamp(30px, 9vw, 50px);
     margin-top: clamp(22px, 4vw, 34px);
     flex-shrink: 0;
   }
   .call-ctrl-btn{
-    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    display: grid; place-items: center;
     border: 0; padding: 0; cursor: pointer;
     background: transparent;
     color: var(--text-soft);
+    transform: translateY(8px);
     -webkit-tap-highlight-color: transparent;
   }
   .call-ctrl-btn > svg{
@@ -2204,11 +2237,6 @@
     transition: background .15s ease, transform .12s ease, color .15s ease;
   }
   .call-ctrl-btn:active > svg{ transform: scale(.92); }
-  .call-ctrl-btn > span{
-    font-family: var(--font-cn);
-    font-size: clamp(12px, 1.6vw, 13.5px);
-    color: var(--text-faint);
-  }
   .call-ctrl-btn.active > svg{
     background: var(--accent);
     color: var(--accent-fg);
@@ -2220,10 +2248,10 @@
     margin-top: clamp(20px, 4vw, 32px);
     width: clamp(64px, 15.5vw, 74px); height: clamp(64px, 15.5vw, 74px);
     border: 0; border-radius: 50%; padding: 0; cursor: pointer;
-    background: var(--call-hangup-bg);
-    color: #fff;
+    background: #c4956a;
+    color: #17120e;
     display: grid; place-items: center;
-    box-shadow: 0 10px 26px var(--call-hangup-shadow);
+    box-shadow: 0 10px 26px rgba(196,149,106,.30);
     transition: transform .15s ease, filter .2s ease;
     flex-shrink: 0;
   }
@@ -2697,6 +2725,7 @@
         <div class="segmented" id="voiceLanguageSeg" role="group" aria-label="语音识别语言">
           <button type="button" data-val="en" class="active">English</button>
           <button type="button" data-val="zh-CN">中文</button>
+          <button type="button" data-val="multi">Multi</button>
         </div>
         <div class="push-hint">Deepgram Nova-3</div>
       </section>
@@ -2970,15 +2999,12 @@
     <div class="call-controls">
       <button class="call-ctrl-btn" id="callMuteBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.75" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><line x1="12" y1="17.5" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line x1="3.8" y1="3" x2="20.2" y2="20.4" class="mute-slash"/></svg>
-        <span>静音</span>
       </button>
-      <button class="call-ctrl-btn" id="callPrivateBtn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.25" width="15" height="10.25" rx="3.2"/><path d="M8 10.25V7.5a4 4 0 0 1 8 0v2.75"/><circle cx="12" cy="14.7" r="1.45" fill="currentColor" stroke="none"/><line x1="12" y1="15.7" x2="12" y2="17.4"/></svg>
-        <span>私密模式</span>
+      <button class="call-ctrl-btn" id="callPrivateBtn" type="button" aria-label="切换为深色通话界面" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"/></svg>
       </button>
       <button class="call-ctrl-btn" id="callSpeakerBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.2h3.3L12 5v14l-4.7-4.2H4z" fill="currentColor" stroke-width="1.2"/><path d="M15.6 9.2a4 4 0 0 1 0 5.6"/><path d="M18.2 6.6a7.5 7.5 0 0 1 0 10.8"/></svg>
-        <span>扬声器</span>
       </button>
     </div>
     <button class="call-hangup" id="callHangup" type="button" aria-label="挂断">
@@ -4320,8 +4346,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let minimized = false;
   let muted = false;
   let speakerLoud = false;
-  let privateMode = false;
-  let audioSenseInterval = null;
+  let callDarkMode = false;
   let secs = 0, tickId = null, hideId = null, rafId = null;
   let waveBuilt = false;
   let bars = [];
@@ -4341,15 +4366,28 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   let pendingIncomingText = "";
   let pendingRemoteHangup = false;
   let callWakeLock = null;
+  let ttsUnlockGeneration = 0;
 
   function deepgramSttUrl(){
     let language = "en";
     try{
       const saved = localStorage.getItem(VOICE_STT_LANGUAGE_KEY);
-      if (saved === "zh-CN") language = saved;
+      if (saved === "zh-CN" || saved === "multi") language = saved;
     }catch(_){ }
     const params = new URLSearchParams({ model:"nova-3", language });
     return `${DEEPGRAM_STT_BASE}?${params.toString()}`;
+  }
+
+  const CALL_SUN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"/></svg>`;
+  const CALL_MOON_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 15.2A8.2 8.2 0 0 1 8.8 3.8a8.3 8.3 0 1 0 11.4 11.4Z"/></svg>`;
+
+  function updateCallThemeButton(){
+    if (overlay) overlay.classList.toggle("dark-mode", callDarkMode);
+    if (!callPrivateBtn) return;
+    callPrivateBtn.classList.toggle("active", callDarkMode);
+    callPrivateBtn.setAttribute("aria-pressed", String(callDarkMode));
+    callPrivateBtn.setAttribute("aria-label", callDarkMode ? "切换为浅色通话界面" : "切换为深色通话界面");
+    callPrivateBtn.innerHTML = callDarkMode ? CALL_MOON_ICON : CALL_SUN_ICON;
   }
 
   function buildVu(){
@@ -4560,45 +4598,6 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       };
       loop();
     }catch(e){}
-  }
-
-  let senseFrames = [];
-  async function startAudioSense(){
-    stopAudioSense();
-    if (!analyser || !freqData) return;
-    senseFrames = [];
-    audioSenseInterval = setInterval(() => {
-      if (!open || !privateMode || !analyser || !freqData) return;
-      analyser.getByteFrequencyData(freqData);
-      let sum = 0, max = 0, maxIdx = 0;
-      for (let i = 0; i < freqData.length; i++){
-        sum += freqData[i];
-        if (freqData[i] > max){ max = freqData[i]; maxIdx = i; }
-      }
-      const volume = sum / Math.max(1, freqData.length) / 255;
-      const sr = audioCtx ? audioCtx.sampleRate : 44100;
-      const pitch = Math.round(maxIdx * (sr / 256));
-      senseFrames.push({ volume, pitch });
-    }, 400);
-  }
-  function flushAudioSense(){
-    if (!senseFrames.length) return "";
-    const frames = senseFrames;
-    senseFrames = [];
-    let vSum = 0, vMax = 0, pSum = 0, pCount = 0;
-    for (const f of frames) {
-      vSum += f.volume;
-      if (f.volume > vMax) vMax = f.volume;
-      if (f.pitch > 0) { pSum += f.pitch; pCount++; }
-    }
-    const avg = (vSum / frames.length).toFixed(3);
-    const peak = vMax.toFixed(3);
-    const pitch = pCount ? Math.round(pSum / pCount) : 0;
-    return `\n🔊 vol=${avg}/${peak} pitch=${pitch}Hz frames=${frames.length}`;
-  }
-  function stopAudioSense(){
-    if (audioSenseInterval){ clearInterval(audioSenseInterval); audioSenseInterval = null; }
-    senseFrames = [];
   }
 
   function pcm16At16k(samples, inputRate){
@@ -4847,7 +4846,6 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (!clean || !open || callTurnBusy) return;
     callTurnBusy = true;
     deepgramWanted = false;
-    const sense = privateMode ? flushAudioSense() : "";
     const optimisticTs = Date.now();
     const tempKey = msgKey(localMessageId());
     const currentSid = effectiveApiSession();
@@ -4871,10 +4869,10 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     setQuote(HINT_THINKING, { hint:true, dots:true });
     callTurnController = new AbortController();
     try{
-      const result = await apiVoiceText(clean + sense, {
+      const result = await apiVoiceText(clean, {
         source:source || "deepgram",
         call_id:callId,
-        transcript:clean + sense,
+        transcript:clean,
         controller:callTurnController,
         onText(){
           if (!open) return;
@@ -4980,16 +4978,26 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       }
     }
     const unlockUrl = URL.createObjectURL(silentWavBlob());
+    const unlockToken = String(++ttsUnlockGeneration);
+    audio.dataset.callUnlock = unlockToken;
     audio.src = unlockUrl;
-    const unlocked = audio.play();
-    if (unlocked && typeof unlocked.then === "function") unlocked.then(() => {
+    let unlocked;
+    try{ unlocked = audio.play(); }
+    catch(error){ unlocked = Promise.reject(error); }
+    return Promise.resolve(unlocked).then(() => {
+      if (audio.dataset.callUnlock !== unlockToken) return;
       audio.pause();
       try{ audio.currentTime = 0; }catch(_){ }
       audio.removeAttribute("src");
       audio.load();
-      URL.revokeObjectURL(unlockUrl);
+      delete audio.dataset.callUnlock;
       applyCallTtsVolume();
-    }).catch(() => { URL.revokeObjectURL(unlockUrl); });
+    }).catch(() => {
+      if (audio.dataset.callUnlock !== unlockToken) return;
+      audio.removeAttribute("src");
+      audio.load();
+      delete audio.dataset.callUnlock;
+    }).finally(() => { URL.revokeObjectURL(unlockUrl); });
   }
 
   function minimizeCall(){
@@ -5010,7 +5018,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     open = true;
     hideIncomingCall();
     void acquireCallWakeLock();
-    unlockCallTtsAudio();
+    const ttsUnlock = unlockCallTtsAudio();
     callId = "call-" + Date.now().toString(36);
     callStartedAt = Date.now();
     insertVoiceCallDivider("started");
@@ -5025,11 +5033,10 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     minimized = false;
     muted = false;
     speakerLoud = false;
-    privateMode = false;
-    stopAudioSense();
+    callDarkMode = false;
+    updateCallThemeButton();
     overlay.classList.remove("minimized");
     if (callMuteBtn) callMuteBtn.classList.remove("active");
-    if (callPrivateBtn) callPrivateBtn.classList.remove("active");
     applyCallTtsVolume();
     inputEl.disabled = true;
     sendBtn.disabled = true;
@@ -5039,6 +5046,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     clearInterval(tickId);
     tickId = setInterval(() => { secs++; const t = fmt(secs); timerEl.textContent = t; if (miniTimer) miniTimer.textContent = t; }, 1000);
     apiCallEvent("start", { call_id: callId }).catch(() => {});
+    await ttsUnlock;
+    if (!open) return;
     await startVoiceInput();
   }
   function closeCall(options = {}){
@@ -5051,10 +5060,9 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     open = false;
     releaseCallWakeLock();
     minimized = false;
-    privateMode = false;
-    stopAudioSense();
+    callDarkMode = false;
+    updateCallThemeButton();
     overlay.classList.remove("minimized");
-    if (callPrivateBtn) callPrivateBtn.classList.remove("active");
     overlay.classList.remove("open");
     overlay.setAttribute("aria-hidden", "true");
     callBtn.classList.remove("active");
@@ -5192,6 +5200,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
           ttsUrl = URL.createObjectURL(blob);
           const audio = ttsAudio || new Audio();
           ttsAudio = audio;
+          delete audio.dataset.callUnlock;
           audio.src = ttsUrl;
           audio.preload = "auto";
           audio.playsInline = true;
@@ -5270,9 +5279,8 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     else if (open && !callTurnBusy && !speakBusy) void startDeepgramStt();
   });
   if (callPrivateBtn) callPrivateBtn.addEventListener("click", () => {
-    privateMode = !privateMode;
-    callPrivateBtn.classList.toggle("active", privateMode);
-    if (privateMode) startAudioSense(); else stopAudioSense();
+    callDarkMode = !callDarkMode;
+    updateCallThemeButton();
   });
   if (callSpeakerBtn) callSpeakerBtn.addEventListener("click", () => {
     speakerLoud = !speakerLoud;
@@ -9665,7 +9673,14 @@ async function apiTts(text){
     const errorText = await response.text().catch(() => "");
     throw new Error(`TTS ${response.status}${errorText ? `: ${errorText.slice(0, 300)}` : ""}`);
   }
-  return response.blob();
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (contentType.includes("json") || contentType.startsWith("text/")){
+    const errorText = await response.text().catch(() => "");
+    throw new Error(`TTS returned ${contentType || "non-audio content"}${errorText ? `: ${errorText.slice(0, 300)}` : ""}`);
+  }
+  const blob = await response.blob();
+  if (!blob || blob.size < 256) throw new Error(`TTS returned empty audio (${blob ? blob.size : 0} bytes)`);
+  return blob;
 }
 function startRealtime(){ connected = true; setConn("online"); }
 
