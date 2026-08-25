@@ -1054,6 +1054,61 @@
   .tool-raw-url .tool-req-val{ margin-top:6px; }
   .tool-card.error{ border-color:rgba(192,83,63,.35); }
 
+  /* Keepalive messages stay normal Hannes bubbles; their background work is
+     tucked into one quiet, collapsed block inside the bubble. */
+  .keepalive-tools{
+    margin-top:9px;
+    border-radius:11px;
+    border:1px solid color-mix(in srgb, var(--field-line) 82%, transparent);
+    background:rgba(127,127,127,.065);
+    overflow:hidden;
+  }
+  .keepalive-tools > summary{
+    list-style:none;
+    display:flex; align-items:center; gap:7px;
+    padding:7px 9px;
+    cursor:pointer;
+    color:var(--text-soft);
+    font:11px/1.45 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  .keepalive-tools > summary::-webkit-details-marker{ display:none; }
+  .keepalive-tools > summary::before{
+    content:"▸";
+    color:var(--think-flourish);
+    font-size:9px;
+    transition:transform .15s ease;
+  }
+  .keepalive-tools[open] > summary::before{ transform:rotate(90deg); }
+  .keepalive-tool-count{ margin-left:auto; color:var(--text-faint); }
+  .keepalive-tool-list{
+    padding:2px 9px 9px;
+    border-top:1px solid var(--field-line);
+  }
+  .keepalive-tool-item{ padding-top:7px; }
+  .keepalive-tool-item + .keepalive-tool-item{
+    margin-top:7px;
+    border-top:1px dashed var(--field-line);
+  }
+  .keepalive-tool-name{
+    color:var(--think-body);
+    font:600 11px/1.45 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  .keepalive-tool-result{
+    margin:4px 0 0;
+    color:var(--text-soft);
+    font:10.5px/1.55 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    white-space:pre-wrap; overflow-wrap:anywhere;
+    max-height:34vh; overflow:auto;
+  }
+  .keepalive-tag{
+    margin-top:5px;
+    color:var(--text-faint);
+    font:10.5px/1.4 var(--font-en),var(--font-cn);
+    letter-spacing:.015em;
+    opacity:.82;
+  }
+  .row.ai.keepalive-row{ flex-direction:column; align-items:flex-start; }
+
 
   /* ── Composer ── */
   .composer{
@@ -6865,6 +6920,32 @@ function lyricShareHtml(share){
   if (!share) return "";
   return `<span class="lyric-share-card"><span class="lyric-share-heading">♪ ${escapeHtml(share.title)} — ${escapeHtml(share.artist)}</span><span class="lyric-share-lines">${escapeHtml(share.lyrics)}</span></span>`;
 }
+function keepaliveToolCalls(message){
+  const meta = message && message.meta || {};
+  return Array.isArray(meta.toolCalls) ? meta.toolCalls : [];
+}
+function keepaliveToolValue(value){
+  if (value == null) return "";
+  if (typeof value === "string") return decodeToolDisplayText(value);
+  try{ return decodeToolDisplayText(JSON.stringify(value, null, 2)); }
+  catch(_){ return String(value); }
+}
+function keepaliveToolsHtml(message){
+  const calls = keepaliveToolCalls(message);
+  if (!calls.length) return "";
+  const items = calls.map((call, index) => {
+    const item = call && typeof call === "object" ? call : { result:call };
+    const name = item.name || item.tool_name || item.tool || `tool ${index + 1}`;
+    const result = item.result ?? item.output ?? item.content ?? item.response ?? "";
+    return `<div class="keepalive-tool-item"><div class="keepalive-tool-name">${escapeHtml(name)}</div><pre class="keepalive-tool-result">${escapeHtml(keepaliveToolValue(result))}</pre></div>`;
+  }).join("");
+  return `<details class="keepalive-tools"><summary><span>Background tools</span><span class="keepalive-tool-count">${calls.length}</span></summary><div class="keepalive-tool-list">${items}</div></details>`;
+}
+function keepaliveTagTime(ts){
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "while you were away";
+  return `${date.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true, timeZone:TZ }).replace(/\s/g, "").toLowerCase()} · while you were away`;
+}
 function makeMessage(rowData){
   const m = rowData.message;
   const displayText = assistantDisplayText(m);
@@ -6872,6 +6953,7 @@ function makeMessage(rowData){
   const lyricShare = parsedLyricShare(displayText);
   const row = document.createElement("div");
   row.className = `row ${m.from === "human" ? "human" : "ai"}${rowData.grouped ? " grouped" : ""}${rowData.tail ? " tail" : ""}`;
+  if (m.meta && m.meta.keepalive) row.classList.add("keepalive-row");
   row.dataset.id = m.id; row.dataset.from = m.from; row.dataset.ts = tsMs(m); row.dataset.messageKey = m._key;
   if (freshKeys.has(m._key)){                       // 只对刚发/刚收到的那条播一次入场动画
     const cls = m.from === "human" ? "enter-human" : "enter-ai";
@@ -6892,6 +6974,7 @@ function makeMessage(rowData){
   if (atts.length) _inner += renderAttachments(atts);
   const voiceSegments = m.from === "ai" && m.status !== "streaming" ? parseAssistantVoiceSegments(displayText) : [];
   if (displayText) _inner += lyricShareHtml(lyricShare) || stickerHtml || `<span class="txt">${voiceSegments.length ? voiceMessageHtml(displayText, voiceSegments) : renderText(displayText)}</span>`;
+  if (m.meta && m.meta.keepalive) _inner += keepaliveToolsHtml(m);
   _inner += `<span class="meta"></span>`;
   bubble.innerHTML = _inner;
   if (atts.length){ bubble.classList.add("has-att"); if (!m.text) bubble.classList.add("att-only"); }
@@ -6906,8 +6989,15 @@ function makeMessage(rowData){
       inputEl.dispatchEvent(new Event("input"));
       doSend();
     });
-  }else if (metaEl && !stickerHtml) fillMeta(metaEl, m.ts, m.from === "human");
+  }else if (metaEl && !stickerHtml && !(m.meta && m.meta.keepalive)) fillMeta(metaEl, m.ts, m.from === "human");
   row.appendChild(bubble);
+  if (m.meta && m.meta.keepalive){
+    const tag = document.createElement("div");
+    tag.className = "keepalive-tag";
+    tag.textContent = keepaliveTagTime(m.ts);
+    row.appendChild(tag);
+    bubble.querySelectorAll(".keepalive-tools").forEach(details => details.addEventListener("toggle", () => measureVisibleRows({ stickToBottom:nearBottom() })));
+  }
   if (voiceSegments.length){
     const joinedVoiceText = voiceSegments.map(segment => segment.content).join(" ");
     setupVoicePlayer(bubble.querySelector(".voice-player"), m, joinedVoiceText);
@@ -9215,6 +9305,7 @@ function startChat(initialMsgs, { connect = true, fromCache = false } = {}){
   renderVirtualList({ stickToBottom:true });
   if (!fromCache) scheduleCacheSave();
   if (connect) startRealtime();
+  startKeepalivePolling();
   refreshContextStatus();
 }
 
@@ -9225,6 +9316,122 @@ function authHeaders(){
   const h = {};
   if (secret) h.Authorization = "Bearer " + secret;
   return h;
+}
+const KEEPALIVE_POLL_MS = 2 * 60 * 1000;
+const KEEPALIVE_SEEN_KEY = "companion_keepalive_display_seen_v1";
+let keepalivePollTimer = null;
+let keepalivePollBusy = false;
+let keepaliveSeenIds = (() => {
+  try{
+    const value = JSON.parse(localStorage.getItem(KEEPALIVE_SEEN_KEY) || "[]");
+    return new Set(Array.isArray(value) ? value.map(String) : []);
+  }catch(_){ return new Set(); }
+})();
+function persistKeepaliveSeenIds(){
+  try{
+    const recent = Array.from(keepaliveSeenIds).slice(-1000);
+    keepaliveSeenIds = new Set(recent);
+    localStorage.setItem(KEEPALIVE_SEEN_KEY, JSON.stringify(recent));
+  }catch(_){ }
+}
+function keepaliveChatIsOpen(){
+  if (!secret || document.visibilityState !== "visible" || appEl.classList.contains("hidden")) return false;
+  const coveringPanels = [menuPanel, conversationPanel, memoryPanel, musicPanel, profilePanel];
+  return !coveringPanels.some(panel => panel && panel.classList.contains("open"));
+}
+function keepaliveEntryTimestamp(entry){
+  const raw = entry && (entry.timestamp ?? entry.ts ?? entry.createdAt ?? entry.created_at ?? entry.time);
+  const parsed = raw == null ? NaN : new Date(raw).getTime();
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+function keepaliveEntryId(entry, index){
+  if (entry && entry.id != null && String(entry.id) !== "") return String(entry.id);
+  const seed = `${keepaliveEntryTimestamp(entry)}:${entry && (entry.content || entry.text || "")}:${index}`;
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+  return `generated-${(hash >>> 0).toString(36)}`;
+}
+function normalizeKeepaliveToolCalls(value){
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string"){
+    try{ const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; }
+    catch(_){ return value.trim() ? [{ name:"tool", result:value }] : []; }
+  }
+  return value && typeof value === "object" ? [value] : [];
+}
+function keepaliveMessageId(timestamp, externalId){
+  let hash = 0;
+  const id = String(externalId || "");
+  for (let i = 0; i < id.length; i++) hash = (Math.imul(hash, 31) + id.charCodeAt(i)) >>> 0;
+  let candidate = Math.max(1, Math.floor(timestamp)) * 1000 + (hash % 997);
+  while (messageByKey.has(msgKey(candidate))) candidate++;
+  return candidate;
+}
+async function clearKeepaliveDisplayEntry(id){
+  const endpoint = new URL("/keepalive-display", GATEWAY_URL);
+  endpoint.searchParams.set("id", id);
+  const response = await fetch(endpoint.toString(), {
+    method:"DELETE",
+    headers:{ ...authHeaders(), Accept:"text/plain" },
+    cache:"no-store"
+  });
+  if (!response.ok) throw new Error(`Keepalive DELETE ${response.status}`);
+}
+async function pollKeepaliveDisplay({ force = false } = {}){
+  if (keepalivePollBusy || (!force && !keepaliveChatIsOpen()) || !secret || USE_MOCK) return;
+  keepalivePollBusy = true;
+  try{
+    const response = await fetch(new URL("/keepalive-display", GATEWAY_URL).toString(), {
+      method:"GET",
+      headers:{ ...authHeaders(), Accept:"application/json" },
+      cache:"no-store"
+    });
+    if (!response.ok) throw new Error(`Keepalive GET ${response.status}`);
+    const payload = await response.json();
+    const entries = Array.isArray(payload) ? payload : (Array.isArray(payload && payload.messages) ? payload.messages : []);
+    const idsToClear = [];
+    let inserted = false;
+    const stickToBottom = nearBottom();
+    entries.forEach((entry, index) => {
+      if (!entry || typeof entry !== "object") return;
+      const externalId = keepaliveEntryId(entry, index);
+      idsToClear.push(externalId);
+      if (keepaliveSeenIds.has(externalId)) return;
+      const content = String(entry.content ?? entry.text ?? "").trim();
+      const toolCalls = normalizeKeepaliveToolCalls(entry.toolCalls ?? entry.tool_calls);
+      if (!content && !toolCalls.length) return;
+      const timestamp = keepaliveEntryTimestamp(entry);
+      const id = keepaliveMessageId(timestamp, externalId);
+      keepaliveSeenIds.add(externalId);
+      seen.add(msgKey(id));
+      freshKeys.add(msgKey(id));
+      setMessage({
+        id,
+        ts:new Date(timestamp).toISOString(),
+        from:"ai",
+        kind:"reply",
+        text:content,
+        meta:{ keepalive:true, keepalive_id:externalId, toolCalls },
+        status:"sent"
+      }, { render:false, cache:true });
+      inserted = true;
+    });
+    if (inserted){
+      persistKeepaliveSeenIds();
+      scheduleRender({ stickToBottom, preserveAnchor:!stickToBottom });
+      await flushMessageCacheNow();
+    }
+    await Promise.allSettled(idsToClear.map(clearKeepaliveDisplayEntry));
+  }catch(error){
+    console.warn("Keepalive display poll failed", error);
+  }finally{
+    keepalivePollBusy = false;
+  }
+}
+function startKeepalivePolling(){
+  if (keepalivePollTimer) clearInterval(keepalivePollTimer);
+  keepalivePollTimer = setInterval(() => { void pollKeepaliveDisplay(); }, KEEPALIVE_POLL_MS);
+  void pollKeepaliveDisplay();
 }
 function activeSessionObj(){ return null; }
 function effectiveApiSession(){ return ""; }
@@ -9260,7 +9467,19 @@ function gatewayContentForMessage(m, includeTimestamp = false){
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
   const voicePrefix = m.from === "human" && (m.voice || (m.meta && m.meta.voice)) ? "[voice call] " : "";
   const prefix = voicePrefix + (includeTimestamp ? `${gatewayLocalTime(m.ts)} ` : "");
-  const messageText = m.from === "ai" ? stripVoiceCallControlMarkers(m.text) : (m.text || "");
+  let messageText = m.from === "ai" ? stripVoiceCallControlMarkers(m.text) : (m.text || "");
+  if (m.from === "ai" && m.meta && m.meta.keepalive){
+    const calls = keepaliveToolCalls(m);
+    if (calls.length){
+      const backgroundTools = calls.map((call, index) => {
+        const item = call && typeof call === "object" ? call : { result:call };
+        const name = item.name || item.tool_name || item.tool || `tool ${index + 1}`;
+        const result = item.result ?? item.output ?? item.content ?? item.response ?? "";
+        return `[Background tool: ${name}]\n${keepaliveToolValue(result)}`;
+      }).join("\n\n");
+      messageText += `${messageText ? "\n\n" : ""}${backgroundTools}`;
+    }
+  }
   if (!atts.length) return prefix + messageText;
   const blocks = [];
   if (messageText || prefix) blocks.push({ type:"text", text:prefix + messageText });
@@ -9726,6 +9945,7 @@ async function init(){
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
   backfill();
+  void pollKeepaliveDisplay();
   refreshContextStatus();
   if (!es || es.readyState !== 1 || Date.now() - lastStreamEventAt > STREAM_STALE_MS) openStream();
 });
