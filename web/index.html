@@ -9474,6 +9474,7 @@ function gatewayContentForMessage(m, includeTimestamp = false){
   const prefix = voicePrefix + (includeTimestamp ? `${gatewayLocalTime(m.ts)} ` : "");
   let messageText = m.from === "ai" ? stripVoiceCallControlMarkers(m.text) : (m.text || "");
   if (m.from === "ai" && m.meta && m.meta.keepalive){
+    messageText = `[keepalive message]${messageText ? `\n${messageText}` : ""}`;
     const calls = keepaliveToolCalls(m);
     if (calls.length){
       const backgroundTools = calls.map((call, index) => {
