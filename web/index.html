@@ -9390,6 +9390,7 @@ async function pollKeepaliveDisplay({ force = false } = {}){
     const payload = await response.json();
     const entries = Array.isArray(payload) ? payload : (Array.isArray(payload && payload.messages) ? payload.messages : []);
     const idsToClear = [];
+    const insertedMessages = [];
     let inserted = false;
     const stickToBottom = nearBottom();
     entries.forEach((entry, index) => {
@@ -9414,9 +9415,13 @@ async function pollKeepaliveDisplay({ force = false } = {}){
         meta:{ keepalive:true, keepalive_id:externalId, toolCalls },
         status:"sent"
       }, { render:false, cache:true });
+      insertedMessages.push({ key:msgKey(id), id });
       inserted = true;
     });
     if (inserted){
+      insertedMessages.sort((a, b) => a.id - b.id);
+      newDividerBeforeKey = insertedMessages[0].key;
+      invalidateRows();
       persistKeepaliveSeenIds();
       scheduleRender({ stickToBottom, preserveAnchor:!stickToBottom });
       await flushMessageCacheNow();
