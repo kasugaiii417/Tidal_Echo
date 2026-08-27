@@ -1664,7 +1664,7 @@
   .music-page{ --music-bg:#0b0a09; --music-paper:#e8e0d4; --music-dim:#746d67; --music-accent:#c4956a; position:absolute; inset:0; overflow:hidden; color:var(--music-paper); background:var(--music-bg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
   .music-view{ position:absolute; inset:0; display:flex; flex-direction:column; background:var(--music-bg); transition:opacity .24s ease,transform .34s var(--ease-soft); }
   .music-view.hidden{ display:none !important; }
-  .music-head{ flex:none; display:grid; grid-template-columns:42px 1fr 42px; align-items:center; padding:calc(env(safe-area-inset-top) + 13px) 16px 12px; z-index:3; }
+  .music-head{ flex:none; display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; padding:calc(env(safe-area-inset-top) + 13px) 16px 12px; z-index:3; }
   .music-head-title{ margin:0; text-align:center; font:400 25px/1.1 "Cormorant Garamond",Georgia,serif; letter-spacing:.08em; }
   .music-icon-btn{ width:42px; height:42px; display:grid; place-items:center; border:0; padding:0; border-radius:50%; color:var(--music-paper); background:transparent; cursor:pointer; }
   .music-icon-btn:active{ background:rgba(232,224,212,.07); }
@@ -1674,6 +1674,9 @@
   .music-kicker{ display:block; color:var(--music-accent); font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.22em; text-transform:uppercase; }
   .music-library-intro h3{ margin:8px 0 4px; font:400 clamp(34px,10vw,50px)/.98 "Cormorant Garamond",Georgia,serif; }
   .music-library-intro p{ margin:9px 0 0; max-width:280px; color:var(--music-dim); font:12px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .music-head-actions{ display:flex; align-items:center; gap:1px; }
+  .music-head-actions .music-icon-btn:disabled{ opacity:.4; cursor:default; }
+  .music-backup-status{ min-height:14px; margin-top:9px; color:#756a61; font:9px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
   .music-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:25px 15px; }
   .music-card{ min-width:0; border:0; padding:0; color:inherit; background:none; text-align:left; cursor:pointer; touch-action:pan-y; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none; }
   .music-card.deleting{ opacity:.42; pointer-events:none; transition:opacity .18s ease; }
@@ -2921,10 +2924,10 @@
       <header class="music-head">
         <button class="music-icon-btn" id="musicHomeBack" type="button" aria-label="Back to home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
         <h2 class="music-head-title">Marginalia</h2>
-        <button class="music-icon-btn" id="musicAddOpen" type="button" aria-label="Add song"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+        <div class="music-head-actions"><button class="music-icon-btn" id="musicExport" type="button" aria-label="Export music backup" title="Export backup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 20h14"/></svg></button><button class="music-icon-btn" id="musicImport" type="button" aria-label="Import music backup" title="Import backup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button><button class="music-icon-btn" id="musicAddOpen" type="button" aria-label="Add song"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><input class="hidden" id="musicImportInput" type="file" accept="application/json,.json"></div>
       </header>
       <div class="music-library-scroll">
-        <div class="music-library-intro"><span class="music-kicker">our listening room</span><h3>Songs we left<br>with each other.</h3><p>A shared shelf for music, and everything written quietly beside it.</p></div>
+        <div class="music-library-intro"><span class="music-kicker">our listening room</span><h3>Songs we left<br>with each other.</h3><p>A shared shelf for music, and everything written quietly beside it.</p><div class="music-backup-status" id="musicBackupStatus"></div></div>
         <div class="music-grid" id="musicGrid"><div class="music-loading">opening the library…</div></div>
         <div class="music-count" id="musicCount">songs: —</div>
       </div>
@@ -3643,6 +3646,7 @@ const musicPlayerTitle = $("#musicPlayerTitle"), musicPlayerArtist = $("#musicPl
 const chatMusicDock = $("#chatMusicDock"), chatMusicLyrics = $("#chatMusicLyrics"), chatMusicPlay = $("#chatMusicPlay"), chatMusicDrawerPlay = $("#chatMusicDrawerPlay"), chatMusicProgress = $("#chatMusicProgress");
 const chatMusicCurrent = $("#chatMusicCurrent"), chatMusicTotal = $("#chatMusicTotal");
 const musicAddForm = $("#musicAddForm"), musicFile = $("#musicFile"), musicFileName = $("#musicFileName"), musicUploadSubmit = $("#musicUploadSubmit"), musicUploadStatus = $("#musicUploadStatus");
+const musicExport = $("#musicExport"), musicImport = $("#musicImport"), musicImportInput = $("#musicImportInput"), musicBackupStatus = $("#musicBackupStatus");
 let musicCloseTimer = null, musicSongs = [], musicSong = null, musicLyricLines = [], musicActiveLine = -1;
 let musicExpandedLines = new Set(), musicEditingLine = -1, musicAuthor = localStorage.getItem("marginalia_author") || "Kitty";
 let musicFollowPausedUntil = 0, musicFollowResumeTimer = null, musicAutoScrolling = false, musicLongPressTimer = null, musicLongPressedLine = -1;
@@ -3735,6 +3739,92 @@ function musicVisibleLyricRoots(){
 }
 function musicCoverUrl(id){ return `${MUSIC_API}/cover?id=${encodeURIComponent(id)}`; }
 function musicAudioUrl(id){ return `${MUSIC_API}/audio?id=${encodeURIComponent(id)}`; }
+function musicBackupKey(song){ return `${String(song?.title || "").trim().toLowerCase()}\u0000${String(song?.artist || "").trim().toLowerCase()}`; }
+function musicDownloadJson(payload, filename){
+  const blob = new Blob([JSON.stringify(payload,null,2)],{ type:"application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob), link = document.createElement("a");
+  link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url),1000);
+}
+async function musicBlobToDataUrl(blob){
+  return new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || "")); reader.onerror = () => reject(reader.error || new Error("Audio export failed")); reader.readAsDataURL(blob); });
+}
+function musicDataUrlToBlob(value){
+  const match = /^data:([^;,]+)?;base64,(.*)$/s.exec(String(value || ""));
+  if (!match) return null;
+  const binary = atob(match[2]), bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes],{ type:match[1] || "audio/mpeg" });
+}
+function musicAnnotationKey(note){
+  return [Number(note?.line),String(note?.lyric || "").trim(),String(note?.text || "").trim(),String(note?.author || "").trim()].join("\u0000");
+}
+async function musicExportBackup(){
+  if (!musicExport || musicExport.disabled) return;
+  musicExport.disabled = true; if (musicImport) musicImport.disabled = true;
+  try{
+    await musicLoadLibrary(true);
+    const songs = [];
+    for (let index = 0; index < musicSongs.length; index++){
+      const summary = musicSongs[index];
+      musicBackupStatus.textContent = `packing ${index + 1} / ${musicSongs.length}…`;
+      let detail = {};
+      try{ detail = await musicFetchJson(`/song?id=${encodeURIComponent(summary.id)}`); }catch(error){ console.warn("Song metadata backup failed",summary.id,error); }
+      let audio = "", audioError = "";
+      try{
+        const response = await fetch(musicAudioUrl(summary.id),{ cache:"no-store" });
+        if (!response.ok) throw new Error(`Audio ${response.status}`);
+        audio = await musicBlobToDataUrl(await response.blob());
+      }catch(error){ audioError = String(error?.message || error); console.warn("Song audio backup failed",summary.id,error); }
+      songs.push({ ...summary, ...detail, id:summary.id, audio, audioError });
+    }
+    musicDownloadJson({ format:"tidal-echo-marginalia", version:1, exportedAt:new Date().toISOString(), songs },`marginalia-backup-${new Date().toISOString().slice(0,10)}.json`);
+    const missing = songs.filter(song => !song.audio).length;
+    musicBackupStatus.textContent = missing ? `exported · ${missing} audio file${missing === 1 ? "" : "s"} unavailable` : `exported ${songs.length} songs + annotations`;
+  }catch(error){ console.error("Music backup export failed",error); musicBackupStatus.textContent = error.message || "export failed"; }
+  finally{ musicExport.disabled = false; if (musicImport) musicImport.disabled = false; }
+}
+async function musicImportBackupFile(file){
+  if (!file) return;
+  musicExport.disabled = true; musicImport.disabled = true;
+  try{
+    const payload = JSON.parse(await file.text());
+    if (!payload || payload.format !== "tidal-echo-marginalia" || !Array.isArray(payload.songs)) throw new Error("Unrecognized Marginalia backup");
+    await musicLoadLibrary(true);
+    let restoredSongs = 0, restoredNotes = 0, skippedSongs = 0;
+    for (let index = 0; index < payload.songs.length; index++){
+      const archived = payload.songs[index] || {};
+      musicBackupStatus.textContent = `restoring ${index + 1} / ${payload.songs.length}…`;
+      let target = musicSongs.find(song => String(song.id) === String(archived.id)) || musicSongs.find(song => musicBackupKey(song) === musicBackupKey(archived));
+      if (!target && archived.audio){
+        const blob = musicDataUrlToBlob(archived.audio);
+        if (blob){
+          const form = new FormData();
+          form.append("artist",String(archived.artist || "Unknown artist")); form.append("title",String(archived.title || "Untitled")); form.append("added_by",String(archived.addedBy || archived.added_by || "Kitty"));
+          form.append("mp3",blob,`${String(archived.title || "song").replace(/[^a-z0-9_-]+/gi,"_")}.mp3`);
+          const response = await fetch(`${MUSIC_API}/add`,{ method:"POST",body:form });
+          if (!response.ok) throw new Error(`Restore upload ${response.status}: ${(await response.text().catch(() => "")).slice(0,120)}`);
+          restoredSongs += 1; await musicLoadLibrary(true);
+          target = musicSongs.find(song => musicBackupKey(song) === musicBackupKey(archived));
+        }
+      }
+      if (!target){ skippedSongs += 1; continue; }
+      let current = {};
+      try{ current = await musicFetchJson(`/song?id=${encodeURIComponent(target.id)}`); }catch(_){ }
+      const existing = new Set((Array.isArray(current.annotations) ? current.annotations : []).map(musicAnnotationKey));
+      for (const note of (Array.isArray(archived.annotations) ? archived.annotations : [])){
+        if (!note || !String(note.text || "").trim() || existing.has(musicAnnotationKey(note))) continue;
+        const archivedLine = note.line != null && Number.isInteger(Number(note.line)) && Number(note.line) >= 0 ? Number(note.line) : null;
+        await musicCreateAnnotation({ id:target.id, line:archivedLine, lyric:note.lyric, text:note.text, author:note.author || "Kitty" });
+        existing.add(musicAnnotationKey(note)); restoredNotes += 1;
+      }
+    }
+    await musicLoadLibrary(true);
+    if (musicSong) await musicRefreshCurrentAnnotations();
+    musicBackupStatus.textContent = `restored ${restoredSongs} songs · ${restoredNotes} annotations${skippedSongs ? ` · ${skippedSongs} missing audio` : ""}`;
+  }catch(error){ console.error("Music backup import failed",error); musicBackupStatus.textContent = error.message || "import failed"; }
+  finally{ musicExport.disabled = false; musicImport.disabled = false; musicImportInput.value = ""; }
+}
 function musicPlayIcon(paused = true){
   return paused
     ? '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10-6.5z"/></svg>'
@@ -4271,6 +4361,9 @@ function bindMusicLyricRoot(root){
 }
 [musicLyrics,chatMusicLyrics].forEach(bindMusicLyricRoot);
 if (musicFile) musicFile.addEventListener("change", () => { musicFileName.textContent = musicFile.files?.[0]?.name || "choose an audio file"; });
+musicExport?.addEventListener("click",() => { void musicExportBackup(); });
+musicImport?.addEventListener("click",() => musicImportInput?.click());
+musicImportInput?.addEventListener("change",() => { void musicImportBackupFile(musicImportInput.files?.[0]); });
 $("#musicAddedBy")?.addEventListener("click", event => { const button = event.target.closest("[data-author]"); if (!button) return; musicAuthor = button.dataset.author; localStorage.setItem("marginalia_author",musicAuthor); button.parentElement.querySelectorAll("button").forEach(btn => btn.classList.toggle("active",btn === button)); });
 $("#musicAddedBy")?.querySelectorAll("button").forEach(button => button.classList.toggle("active",button.dataset.author === musicAuthor));
 if (musicAddForm) musicAddForm.addEventListener("submit", async event => {

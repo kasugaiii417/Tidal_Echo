@@ -2,7 +2,7 @@
    IMPORTANT: bump CACHE on every front-end change, or installed clients keep the
    old shell (the precached index.html won't refresh until the SW reinstalls). */
 const AI_NAME = "Hannes";          // push-title fallback; keep in sync with index.html CONFIG.AI_NAME
-const CACHE = "companion-v134-keepalive-context-label";
+const CACHE = "companion-v135-marginalia-backup";
 const PRECACHE = [
   "./index.html",
   "./chat-light.webp", "./chat-harbor.webp",
