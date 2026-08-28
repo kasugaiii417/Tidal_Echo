@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v146">
+<link rel="manifest" href="manifest.webmanifest?build=v148">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -3430,12 +3430,53 @@ function sampleImageBand(img, yStart, ySize){
   var d = ctx.getImageData(0,0,1,1).data;
   return "rgb("+d[0]+","+d[1]+","+d[2]+")";
 }
+function wallpaperSeamGeometry(img){
+  const viewportWidth = (window.screen && window.screen.width) || window.innerWidth || img.width;
+  const physicalHeight = (window.screen && window.screen.height) || window.innerHeight || img.height;
+  const viewportValues = [
+    window.innerHeight || 0,
+    document.documentElement.clientHeight || 0,
+    window.visualViewport
+      ? (window.visualViewport.height || 0) + (window.visualViewport.offsetTop || 0)
+      : 0
+  ].filter(value => value > 0);
+  const visibleHeight = viewportValues.length ? Math.min(...viewportValues) : physicalHeight;
+  const seamRatio = Math.max(0.72, Math.min(0.995, physicalHeight > 0 ? visibleHeight / physicalHeight : 0.93));
+  const scale = Math.max(viewportWidth / img.width, physicalHeight / img.height);
+  const sourceHeight = physicalHeight / scale;
+  const sourceTop = Math.max(0, (img.height - sourceHeight) / 2);
+  return {
+    start: Math.floor(sourceTop + sourceHeight * Math.max(0, seamRatio - 0.008)),
+    size: Math.max(1, Math.floor(sourceHeight * 0.016))
+  };
+}
+function rgbParts(color){
+  const match = String(color || "").match(/[\d.]+/g);
+  return match && match.length >= 3 ? match.slice(0,3).map(Number) : null;
+}
+function blendColors(base, overlay, opacity){
+  const a = rgbParts(base), b = rgbParts(overlay);
+  if (!a) return overlay || base;
+  if (!b) return base;
+  const mix = Math.max(0, Math.min(1, Number(opacity) || 0));
+  const values = a.map((value,index) => Math.round(value * (1 - mix) + b[index] * mix));
+  return `rgb(${values[0]},${values[1]},${values[2]})`;
+}
+let baseWallTopColor = "rgb(244,244,245)";
+let baseWallSeamColor = getComputedStyle(document.documentElement).getPropertyValue("--viewport-tail-color").trim() || "rgb(225,230,237)";
+let customWallTopColor = "";
+let customWallSeamColor = "";
+function syncAdaptiveWallpaperColors(){
+  const opacity = customWallUrl ? customWallOpacityValue() / 100 : 0;
+  const topColor = customWallTopColor ? blendColors(baseWallTopColor, customWallTopColor, opacity) : baseWallTopColor;
+  const seamColor = customWallSeamColor ? blendColors(baseWallSeamColor, customWallSeamColor, opacity) : baseWallSeamColor;
+  setThemeColor(topColor);
+  document.documentElement.style.setProperty("--viewport-tail-color", seamColor);
+}
 function applyWall(urls){
   const sources = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(resolvedAssetUrl);
   const image = sources.map(url => `url("${url}")`).join(", ");
   wallEl.style.backgroundImage = image;
-  var de = document.documentElement;
-
   var img = new Image();
   img.onload = function(){
     try{
@@ -3445,22 +3486,10 @@ function applyWall(urls){
          the remainder with the root color rather than the root image. Sample
          the wallpaper where that seam actually occurs so the system-owned
          strip blends into the image instead of appearing white. */
-      var viewportValues = [
-        window.innerHeight || 0,
-        de.clientHeight || 0,
-        window.visualViewport
-          ? (window.visualViewport.height || 0) + (window.visualViewport.offsetTop || 0)
-          : 0
-      ].filter(function(value){ return value > 0; });
-      var visibleHeight = viewportValues.length ? Math.min.apply(Math, viewportValues) : 0;
-      var physicalHeight = window.screen && window.screen.height ? window.screen.height : visibleHeight;
-      var seamRatio = physicalHeight > 0 ? visibleHeight / physicalHeight : 0.93;
-      seamRatio = Math.max(0.72, Math.min(0.995, seamRatio));
-      var seamStart = Math.floor(img.height * Math.max(0, seamRatio - 0.008));
-      var seamSize = Math.max(1, Math.floor(img.height * 0.016));
-      var seamCol = sampleImageBand(img, seamStart, seamSize);
-      setThemeColor(topCol);
-      de.style.setProperty("--viewport-tail-color", seamCol);
+      var seam = wallpaperSeamGeometry(img);
+      baseWallTopColor = topCol;
+      baseWallSeamColor = sampleImageBand(img, seam.start, seam.size);
+      syncAdaptiveWallpaperColors();
     }catch(e){}
   };
   let sourceIndex = 0;
@@ -3489,6 +3518,30 @@ function applyCustomWall(url, opacity = 100){
   document.documentElement.style.setProperty("--custom-wall-opacity", customWallUrl ? String(safeOpacity / 100) : "0");
   if (customWallOpacity) customWallOpacity.value = String(safeOpacity);
   syncCustomWallUi();
+  if (!customWallUrl){
+    customWallTopColor = "";
+    customWallSeamColor = "";
+    syncAdaptiveWallpaperColors();
+    return;
+  }
+  const requestedUrl = customWallUrl;
+  const image = new Image();
+  image.onload = () => {
+    if (customWallUrl !== requestedUrl) return;
+    try{
+      const seam = wallpaperSeamGeometry(image);
+      customWallTopColor = sampleImageBand(image, 0, Math.max(1,Math.floor(image.height * 0.12)));
+      customWallSeamColor = sampleImageBand(image, seam.start, seam.size);
+      syncAdaptiveWallpaperColors();
+    }catch(error){ console.warn("custom wallpaper color sampling failed",error); }
+  };
+  image.onerror = () => {
+    if (customWallUrl !== requestedUrl) return;
+    customWallTopColor = "";
+    customWallSeamColor = "";
+    syncAdaptiveWallpaperColors();
+  };
+  image.src = requestedUrl;
 }
 function wallpaperDataUrl(file){
   return new Promise((resolve, reject) => {
@@ -4496,6 +4549,7 @@ if (customWallOpacity) customWallOpacity.addEventListener("input", () => {
   document.documentElement.style.setProperty("--custom-wall-opacity", String(opacity / 100));
   if (customWallOpacityLabel) customWallOpacityLabel.textContent = `${opacity}%`;
   try{ localStorage.setItem(CUSTOM_WALL_OPACITY_KEY, String(opacity)); }catch(_){}
+  syncAdaptiveWallpaperColors();
 });
 if (customWallReset) customWallReset.addEventListener("click", () => {
   try{
@@ -10268,7 +10322,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v147";
+  const SW_BUILD = "v148";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
