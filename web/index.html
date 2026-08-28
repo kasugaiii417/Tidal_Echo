@@ -44,6 +44,7 @@
     --screen-height: 100vh;
     --keyboard-offset: 0px;
     --ios-pwa-bottom-bleed: 0px;
+    --ios-pwa-safe-bleed: max(var(--ios-pwa-bottom-bleed), calc(env(safe-area-inset-bottom) + 16px));
     --ref-width: 941px;
     --ref-height: 1672px;
     --font-en: "Cormorant Garamond", Georgia, serif;
@@ -149,8 +150,11 @@
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
-  body{ position: fixed; inset: 0; bottom:calc(-1 * var(--ios-pwa-bottom-bleed)); width: 100%;
-    background: var(--bg);
+  body{ position: fixed; inset: 0; bottom:calc(-1 * var(--ios-pwa-safe-bleed)); width: 100%;
+    background-color: var(--bg);
+    background-image: var(--wall-default);
+    background-size: cover;
+    background-position: center;
     color: var(--text);
     font-family: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
     font-size: clamp(15px, 1.55vw, 17px);
@@ -166,7 +170,7 @@
     position: fixed;
     top: 0;
     right: 0;
-    bottom: calc(-1 * var(--ios-pwa-bottom-bleed));
+    bottom: calc(-1 * var(--ios-pwa-safe-bleed));
     left: 0;
     z-index: 1;
     width: min(100vw, var(--ref-width));
@@ -177,7 +181,7 @@
     position:fixed;
     inset:0;
     width:100vw;
-    height:calc(var(--screen-height) + var(--ios-pwa-bottom-bleed));
+    height:calc(var(--screen-height) + var(--ios-pwa-safe-bleed));
     z-index:0;
     background-color: var(--bg);
     background-image: var(--wall-default);
@@ -1546,7 +1550,7 @@
   /* ── Menu (hub / home page · 从聊天页左箭头进入) ── */
   .menu-panel{
     position: fixed; inset: 0; z-index: 190;
-    bottom:calc(-1 * var(--ios-pwa-bottom-bleed));
+    bottom:calc(-1 * var(--ios-pwa-safe-bleed));
     pointer-events: none;
     transform: translateX(-100%);
     opacity: 0;
@@ -1660,7 +1664,7 @@
   }
 
   /* ── MARGINALIA · shared music library ── */
-  .music-panel{ position:fixed; inset:0; bottom:calc(-1 * var(--ios-pwa-bottom-bleed)); z-index:198; pointer-events:none; opacity:0; transform:translateX(100%); transition:transform .38s var(--ease-soft),opacity .28s ease; }
+  .music-panel{ position:fixed; inset:0; bottom:calc(-1 * var(--ios-pwa-safe-bleed)); z-index:198; pointer-events:none; opacity:0; transform:translateX(100%); transition:transform .38s var(--ease-soft),opacity .28s ease; }
   .music-panel.open{ pointer-events:auto; opacity:1; transform:none; }
   .music-page{ --music-bg:#0b0a09; --music-paper:#e8e0d4; --music-dim:#746d67; --music-accent:#c4956a; position:absolute; inset:0; overflow:hidden; color:var(--music-paper); background:var(--music-bg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
   .music-view{ position:absolute; inset:0; display:flex; flex-direction:column; background:var(--music-bg); transition:opacity .24s ease,transform .34s var(--ease-soft); }
@@ -1833,7 +1837,7 @@
   /* ── Conversation list (home → conversations → chat) ── */
   .conversation-panel{
     position:fixed; inset:0; z-index:195;
-    bottom:calc(-1 * var(--ios-pwa-bottom-bleed));
+    bottom:calc(-1 * var(--ios-pwa-safe-bleed));
     pointer-events:none; opacity:0; transform:translateX(100%);
     transition:transform .38s var(--ease-soft), opacity .28s ease;
   }
@@ -1924,7 +1928,7 @@
   /* ── Local memory archive ── */
   .memory-panel{
     position:fixed; inset:0; z-index:200; pointer-events:none;
-    bottom:calc(-1 * var(--ios-pwa-bottom-bleed));
+    bottom:calc(-1 * var(--ios-pwa-safe-bleed));
     opacity:0; transform:translateX(100%);
     transition:transform .38s var(--ease-soft), opacity .28s ease;
   }
@@ -2003,7 +2007,7 @@
   /* ── Voice call (speaking overlay · 假按键 / 纯 UI,后端以后接) ── */
   .call-overlay{
     position: fixed; inset: 0; z-index: 150;
-    bottom:calc(-1 * var(--ios-pwa-bottom-bleed));
+    bottom:calc(-1 * var(--ios-pwa-safe-bleed));
     pointer-events: none;
   }
   .call-scrim{
