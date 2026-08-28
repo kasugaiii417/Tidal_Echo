@@ -48,11 +48,11 @@
     --ref-height: 1672px;
     --font-en: "Cormorant Garamond", Georgia, serif;
     --font-cn: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
-    --wall-light: url("./chat-light.webp"), url("./chat-light.jpg");
-    --wall-harbor: url("./chat-harbor.webp"), url("./chat-harbor.jpg");
+    --wall-light: url("./chat-light.webp"), url("./chat-light.jpg"), url("https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/chat-light.webp");
+    --wall-harbor: url("./chat-harbor.webp"), url("./chat-harbor.jpg"), url("https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/chat-harbor.webp");
     --wall-default: var(--wall-light);
-    --menu-wall-light: url("./menu-light.webp"), url("./menu-light.jpg");
-    --menu-wall-harbor: url("./menu-harbor.webp"), url("./menu-harbor.jpg");
+    --menu-wall-light: url("./menu-light.webp"), url("./menu-light.jpg"), url("https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/menu-light.webp");
+    --menu-wall-harbor: url("./menu-harbor.webp"), url("./menu-harbor.jpg"), url("https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/menu-harbor.webp");
     --menu-wall-default: var(--menu-wall-light);
     --avatar-default: url("avatar-sea.png");
     --human-avatar-default: var(--avatar-default);
@@ -3370,8 +3370,8 @@ const memoryExport = $("#memoryExport"), memoryImport = $("#memoryImport"), memo
 /* ════════ 固定聊天背景 + 本地头像 ════════ */
 const THEMES = ["light","harbor"];
 const WALLS = {
-  light:["./chat-light.webp","./chat-light.jpg"],
-  harbor:["./chat-harbor.webp","./chat-harbor.jpg"]
+  light:["./chat-light.webp","./chat-light.jpg","https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/chat-light.webp"],
+  harbor:["./chat-harbor.webp","./chat-harbor.jpg","https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/chat-harbor.webp"]
 };
 const AVATAR_KEY = "companion_avatar";
 const HUMAN_AVATAR_KEY = "companion_human_avatar";
