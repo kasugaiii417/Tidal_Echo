@@ -10233,9 +10233,26 @@ if (window.visualViewport){
   applyVV();
 }
 
-/* Service Worker */
+/* Service Worker: version the script URL and bypass Safari's HTTP cache so an
+   installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  const SW_BUILD = "v142";
+  const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
+  let swReloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swReloading || sessionStorage.getItem(SW_RELOAD_KEY)) return;
+    swReloading = true;
+    sessionStorage.setItem(SW_RELOAD_KEY, "1");
+    location.reload();
+  });
+  window.addEventListener("load", async () => {
+    try{
+      const registration = await navigator.serviceWorker.register(`sw.js?build=${SW_BUILD}`, {
+        updateViaCache:"none"
+      });
+      await registration.update();
+    }catch(_){ }
+  });
 }
 
 init();

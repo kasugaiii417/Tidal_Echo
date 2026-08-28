@@ -2,7 +2,7 @@
    IMPORTANT: bump CACHE on every front-end change, or installed clients keep the
    old shell (the precached index.html won't refresh until the SW reinstalls). */
 const AI_NAME = "Hannes";          // push-title fallback; keep in sync with index.html CONFIG.AI_NAME
-const CACHE = "companion-v141-ios-safe-bleed";
+const CACHE = "companion-v142-forced-shell-refresh";
 const PRECACHE = [
   "./index.html",
   "./chat-light.webp", "./chat-harbor.webp",
@@ -15,7 +15,12 @@ const PRECACHE = [
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => c.addAll(PRECACHE))
+      .then((c) => Promise.all(PRECACHE.map(async (path) => {
+        const url = new URL(path, self.registration.scope).href;
+        const response = await fetch(url, { cache: "reload" });
+        if (!response.ok) throw new Error(`Precache ${response.status}: ${path}`);
+        await c.put(url, response);
+      })))
       .then(() => self.skipWaiting())
       .catch(() => self.skipWaiting())
   );
