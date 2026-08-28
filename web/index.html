@@ -10178,10 +10178,17 @@ function applyPwaViewportBleed(){
   const standalone = !!navigator.standalone ||
     window.matchMedia("(display-mode: standalone)").matches ||
     window.matchMedia("(display-mode: fullscreen)").matches;
-  const layoutH = Math.max(
+  const viewportHeights = [
     window.innerHeight || 0,
-    document.documentElement.clientHeight || 0
-  );
+    document.documentElement.clientHeight || 0,
+    window.visualViewport
+      ? (window.visualViewport.height || 0) + (window.visualViewport.offsetTop || 0)
+      : 0
+  ].filter(value => value > 0);
+  // iOS standalone can expose a full layout height alongside a shorter visual
+  // viewport. The smaller value is the painted area; using the larger one hid
+  // the real bottom gap and left the root background visible as a white strip.
+  const layoutH = viewportHeights.length ? Math.min(...viewportHeights) : 0;
   const screenH = window.screen && window.screen.height ? window.screen.height : 0;
   let bleed = standalone ? Math.max(0, Math.round(screenH - layoutH)) : 0;
   if (bleed > 160) bleed = 0;
@@ -10190,6 +10197,10 @@ function applyPwaViewportBleed(){
 applyPwaViewportBleed();
 window.addEventListener("resize", applyPwaViewportBleed);
 window.addEventListener("orientationchange", () => setTimeout(applyPwaViewportBleed, 250));
+if (window.visualViewport){
+  window.visualViewport.addEventListener("resize", applyPwaViewportBleed);
+  window.visualViewport.addEventListener("scroll", applyPwaViewportBleed);
+}
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") applyPwaViewportBleed();
 });
