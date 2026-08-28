@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v150">
+<link rel="manifest" href="manifest.webmanifest?build=v151">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -2558,6 +2558,28 @@
   .msg-act svg{ width:18px; height:18px; opacity:.82; flex:0 0 auto; }
   .msg-act.danger{ color:#e05a4d; }                       /* 删除(仅本地) */
 
+  /* In-app image viewer. Attachment links used to open their authenticated
+     upload URL in Safari, which loses the already-loaded local blob preview. */
+  .image-viewer{
+    position:fixed; inset:0; z-index:270; display:grid; place-items:center;
+    padding:calc(env(safe-area-inset-top) + 48px) 14px calc(env(safe-area-inset-bottom) + 28px);
+    background:rgba(7,10,14,.88); opacity:0; pointer-events:none;
+    transition:opacity .2s ease;
+    -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+  }
+  .image-viewer.open{ opacity:1; pointer-events:auto; }
+  .image-viewer img{
+    display:block; max-width:100%; max-height:100%; width:auto; height:auto;
+    object-fit:contain; border-radius:8px; box-shadow:0 22px 70px rgba(0,0,0,.42);
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  }
+  .image-viewer-close{
+    position:absolute; top:calc(env(safe-area-inset-top) + 10px); right:16px;
+    width:38px; height:38px; display:grid; place-items:center; border:0;
+    border-radius:50%; color:#f4eee7; background:rgba(255,255,255,.12);
+    font:300 28px/1 sans-serif; cursor:pointer;
+  }
+
   /* ── reaction chips (AI poke) ── */
   .row.has-reactions{ flex-direction:column; gap:5px; }
   .row.human.has-reactions{ align-items:flex-end; }
@@ -3133,6 +3155,11 @@
   </div>
 </div>
 
+<div class="image-viewer" id="imageViewer" aria-hidden="true" role="dialog" aria-label="图片预览">
+  <button class="image-viewer-close" id="imageViewerClose" type="button" aria-label="关闭图片预览">×</button>
+  <img id="imageViewerImg" alt="图片预览">
+</div>
+
 <script>
 /* ════════════════════════════════════════════════════════════════
    Tidal Echo — PWA chat shell (open source)
@@ -3481,9 +3508,8 @@ function loadSurfaceWallpaperColors(urls,name){
       const sampledTail = sampleImageBand(image,tail.start,tail.size);
       chromeSurfaces[name] = {
         top:sampleImageBand(image,0,Math.max(1,Math.floor(image.height * 0.12))),
-        /* The light Home wallpaper's raw last pixels are cool blue, while its
-           composited visible edge is #ebeaea because of the page scrim. */
-        tail:name === "menu" && currentTheme() === "light" ? "rgb(235,234,234)" : sampledTail
+        /* Home uses a warmer paper edge than the source image's cool pixels. */
+        tail:name === "menu" && currentTheme() === "light" ? "rgb(238,233,228)" : sampledTail
       };
       if (activeChromeSurface === name) paintChromeSurface(chromeSurfaces[name]);
     }catch(error){ console.warn(`${name} wallpaper color sampling failed`,error); }
@@ -6372,6 +6398,35 @@ function renderAttachments(atts){
     return `<a class="att-file${up}${fail}" href="${escapeHtml(attUrl(a.url))}" target="_blank" rel="noopener" download="${escapeHtml(a.name || "file")}"><span class="att-file-ic">${fileIconSvg()}</span><span class="att-file-meta"><span class="att-file-name">${escapeHtml(a.name || "文件")}</span><span class="att-file-size">${fmtSize(a.size)}${a.uploading ? " · 上传中…" : (a.failed ? " · 失败" : "")}</span></span></a>`;
   }).join("");
 }
+
+(function setupImageViewer(){
+  const viewer = document.getElementById("imageViewer");
+  const viewerImage = document.getElementById("imageViewerImg");
+  const closeButton = document.getElementById("imageViewerClose");
+  if (!viewer || !viewerImage || !scrollEl) return;
+  function closeViewer(){
+    viewer.classList.remove("open");
+    viewer.setAttribute("aria-hidden","true");
+    setTimeout(() => { if (!viewer.classList.contains("open")) viewerImage.removeAttribute("src"); },220);
+  }
+  scrollEl.addEventListener("click",event => {
+    const link = event.target.closest(".att-img-link");
+    if (!link || !scrollEl.contains(link)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const thumbnail = link.querySelector("img");
+    const source = thumbnail && (thumbnail.currentSrc || thumbnail.src);
+    if (!source){ showToast("图片暂时无法打开"); return; }
+    viewerImage.src = source;
+    viewer.classList.add("open");
+    viewer.setAttribute("aria-hidden","false");
+  });
+  viewer.addEventListener("click",event => { if (event.target === viewer) closeViewer(); });
+  if (closeButton) closeButton.addEventListener("click",closeViewer);
+  document.addEventListener("keydown",event => {
+    if (event.key === "Escape" && viewer.classList.contains("open")) closeViewer();
+  });
+})();
 function msgKey(id){ return String(id); }
 function msgNum(id){
   const n = Number(id);
@@ -10354,7 +10409,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v150";
+  const SW_BUILD = "v151";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
