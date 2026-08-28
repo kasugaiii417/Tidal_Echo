@@ -149,8 +149,16 @@
   }
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
+  html, body{ margin:0; padding:0; height:100%; overscroll-behavior:none; }
+  html{
+    overflow:hidden;
+    background-color:var(--bg);
+    background-image:var(--wall-default);
+    background-size:cover;
+    background-position:center;
+  }
   body{ position: fixed; inset: 0 0 auto 0; width: 100%; height:var(--screen-height);
+    overflow:visible;
     background-color: var(--bg);
     background-image: var(--wall-default);
     background-size: cover;
@@ -10236,7 +10244,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v144";
+  const SW_BUILD = "v145";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
