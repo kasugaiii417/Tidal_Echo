@@ -48,11 +48,11 @@
     --ref-height: 1672px;
     --font-en: "Cormorant Garamond", Georgia, serif;
     --font-cn: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
-    --wall-light: url("chat-light.webp");
-    --wall-harbor: url("chat-harbor.webp");
+    --wall-light: url("./chat-light.webp"), url("./chat-light.jpg");
+    --wall-harbor: url("./chat-harbor.webp"), url("./chat-harbor.jpg");
     --wall-default: var(--wall-light);
-    --menu-wall-light: url("menu-light.webp");
-    --menu-wall-harbor: url("menu-harbor.webp");
+    --menu-wall-light: url("./menu-light.webp"), url("./menu-light.jpg");
+    --menu-wall-harbor: url("./menu-harbor.webp"), url("./menu-harbor.jpg");
     --menu-wall-default: var(--menu-wall-light);
     --avatar-default: url("avatar-sea.png");
     --human-avatar-default: var(--avatar-default);
@@ -3369,7 +3369,10 @@ const memoryExport = $("#memoryExport"), memoryImport = $("#memoryImport"), memo
 
 /* ════════ 固定聊天背景 + 本地头像 ════════ */
 const THEMES = ["light","harbor"];
-const WALLS = { light: "chat-light.webp", harbor: "chat-harbor.webp" };
+const WALLS = {
+  light:["./chat-light.webp","./chat-light.jpg"],
+  harbor:["./chat-harbor.webp","./chat-harbor.jpg"]
+};
 const AVATAR_KEY = "companion_avatar";
 const HUMAN_AVATAR_KEY = "companion_human_avatar";
 const CUSTOM_WALL_KEY = "companion_custom_chat_wall";
@@ -3388,6 +3391,10 @@ function currentTheme(){
   return THEMES.indexOf(t) >= 0 ? t : "light";
 }
 function currentWall(){ return WALLS[currentTheme()] || WALLS.light; }
+function resolvedAssetUrl(path){
+  try{ return new URL(path,document.baseURI).href; }
+  catch(_){ return path; }
+}
 
 function setThemeColor(color){
   var meta = document.querySelector('meta[name="theme-color"]');
@@ -3400,8 +3407,9 @@ function sampleImageBand(img, yStart, ySize){
   var d = ctx.getImageData(0,0,1,1).data;
   return "rgb("+d[0]+","+d[1]+","+d[2]+")";
 }
-function applyWall(url){
-  const image = `url("${url}")`;
+function applyWall(urls){
+  const sources = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(resolvedAssetUrl);
+  const image = sources.map(url => `url("${url}")`).join(", ");
   wallEl.style.backgroundImage = image;
   var de = document.documentElement, bd = document.body;
 
@@ -3415,7 +3423,12 @@ function applyWall(url){
       bd.style.setProperty("background-color", botCol, "important");
     }catch(e){}
   };
-  img.src = url;
+  let sourceIndex = 0;
+  img.onerror = function(){
+    sourceIndex += 1;
+    if (sources[sourceIndex]) img.src = sources[sourceIndex];
+  };
+  if (sources[0]) img.src = sources[0];
 }
 let customWallUrl = "";
 function customWallOpacityValue(){
