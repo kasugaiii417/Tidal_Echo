@@ -50,10 +50,12 @@
   --scrim:linear-gradient(180deg,rgba(255,255,255,.48),rgba(255,255,255,.16) 32%,rgba(255,255,255,.06) 66%,rgba(255,255,255,.30));
   --danger:#b06a6f;
   --peer-avatar:url("avatar-sea.png");
+  --viewport-tail:#e1e6ed;
 }
 
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body{ margin:0; padding:0; }
+html{ background:var(--viewport-tail); }
 body{
   background:var(--bg); color:var(--text);
   font-family:var(--font-cn); font-size:15px; line-height:1.6;
@@ -667,6 +669,24 @@ $("gateHome").onclick=()=>location.assign("index.html");
 $("gateSave").onclick=()=>{ const v=$("gateInput").value.trim(); if(v){ secret=v; localStorage.setItem(LS_KEY,v); loadList(); } };
 
 /* 启动 */
+(function syncAlbumSystemColors(){
+  const image=new Image();
+  image.onload=()=>{
+    try{
+      const canvas=document.createElement("canvas"); canvas.width=1; canvas.height=1;
+      const context=canvas.getContext("2d");
+      const tailSize=Math.max(1,Math.floor(image.height*.04));
+      context.drawImage(image,0,image.height-tailSize,image.width,tailSize,0,0,1,1);
+      const tail=context.getImageData(0,0,1,1).data;
+      document.documentElement.style.setProperty("--viewport-tail",`rgb(${tail[0]},${tail[1]},${tail[2]})`);
+      context.clearRect(0,0,1,1);
+      context.drawImage(image,0,0,image.width,Math.max(1,Math.floor(image.height*.12)),0,0,1,1);
+      const top=context.getImageData(0,0,1,1).data;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content",`rgb(${top[0]},${top[1]},${top[2]})`);
+    }catch(_){ }
+  };
+  image.src="chat-light.webp";
+})();
 if(!secret) show("gate"); else loadList();
 </script>
 </body>

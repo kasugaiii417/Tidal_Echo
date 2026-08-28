@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v148">
+<link rel="manifest" href="manifest.webmanifest?build=v149">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -3396,6 +3396,10 @@ const WALLS = {
   light:["./chat-light.webp","./chat-light.jpg","https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/chat-light.webp"],
   harbor:["./chat-harbor.webp","./chat-harbor.jpg","https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/chat-harbor.webp"]
 };
+const MENU_WALLS = {
+  light:["./menu-light.webp","./menu-light.jpg","https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/menu-light.webp"],
+  harbor:["./menu-harbor.webp","./menu-harbor.jpg","https://raw.githubusercontent.com/kasugaiii417/Tidal_Echo/main/web/menu-harbor.webp"]
+};
 const AVATAR_KEY = "companion_avatar";
 const HUMAN_AVATAR_KEY = "companion_human_avatar";
 const CUSTOM_WALL_KEY = "companion_custom_chat_wall";
@@ -3414,6 +3418,7 @@ function currentTheme(){
   return THEMES.indexOf(t) >= 0 ? t : "light";
 }
 function currentWall(){ return WALLS[currentTheme()] || WALLS.light; }
+function currentMenuWall(){ return MENU_WALLS[currentTheme()] || MENU_WALLS.light; }
 function resolvedAssetUrl(path){
   try{ return new URL(path,document.baseURI).href; }
   catch(_){ return path; }
@@ -3430,25 +3435,11 @@ function sampleImageBand(img, yStart, ySize){
   var d = ctx.getImageData(0,0,1,1).data;
   return "rgb("+d[0]+","+d[1]+","+d[2]+")";
 }
-function wallpaperSeamGeometry(img){
-  const viewportWidth = (window.screen && window.screen.width) || window.innerWidth || img.width;
-  const physicalHeight = (window.screen && window.screen.height) || window.innerHeight || img.height;
-  const viewportValues = [
-    window.innerHeight || 0,
-    document.documentElement.clientHeight || 0,
-    window.visualViewport
-      ? (window.visualViewport.height || 0) + (window.visualViewport.offsetTop || 0)
-      : 0
-  ].filter(value => value > 0);
-  const visibleHeight = viewportValues.length ? Math.min(...viewportValues) : physicalHeight;
-  const seamRatio = Math.max(0.72, Math.min(0.995, physicalHeight > 0 ? visibleHeight / physicalHeight : 0.93));
-  const scale = Math.max(viewportWidth / img.width, physicalHeight / img.height);
-  const sourceHeight = physicalHeight / scale;
-  const sourceTop = Math.max(0, (img.height - sourceHeight) / 2);
-  return {
-    start: Math.floor(sourceTop + sourceHeight * Math.max(0, seamRatio - 0.008)),
-    size: Math.max(1, Math.floor(sourceHeight * 0.016))
-  };
+function wallpaperTailGeometry(img){
+  /* The iOS-owned strip follows the page, not the DOM viewport. Sampling the
+     final 4% of the source gives it the same visual ending as the wallpaper. */
+  const size = Math.max(1,Math.floor(img.height * 0.04));
+  return { start:Math.max(0,img.height - size), size };
 }
 function rgbParts(color){
   const match = String(color || "").match(/[\d.]+/g);
@@ -3466,12 +3457,46 @@ let baseWallTopColor = "rgb(244,244,245)";
 let baseWallSeamColor = getComputedStyle(document.documentElement).getPropertyValue("--viewport-tail-color").trim() || "rgb(225,230,237)";
 let customWallTopColor = "";
 let customWallSeamColor = "";
+let activeChromeSurface = "chat";
+const chromeSurfaces = {
+  chat:{ top:baseWallTopColor, tail:baseWallSeamColor },
+  menu:{ top:"rgb(244,244,245)", tail:"rgb(233,237,243)" },
+  music:{ top:"rgb(11,10,9)", tail:"rgb(11,10,9)" },
+  callLight:{ top:"rgb(244,244,245)", tail:"rgb(225,230,237)" },
+  callDark:{ top:"rgb(11,10,9)", tail:"rgb(11,10,9)" }
+};
+function paintChromeSurface(surface){
+  if (!surface) return;
+  setThemeColor(surface.top);
+  document.documentElement.style.setProperty("--viewport-tail-color",surface.tail);
+}
+function applyChromeSurface(name){
+  activeChromeSurface = chromeSurfaces[name] ? name : "chat";
+  paintChromeSurface(chromeSurfaces[activeChromeSurface]);
+}
 function syncAdaptiveWallpaperColors(){
   const opacity = customWallUrl ? customWallOpacityValue() / 100 : 0;
   const topColor = customWallTopColor ? blendColors(baseWallTopColor, customWallTopColor, opacity) : baseWallTopColor;
   const seamColor = customWallSeamColor ? blendColors(baseWallSeamColor, customWallSeamColor, opacity) : baseWallSeamColor;
-  setThemeColor(topColor);
-  document.documentElement.style.setProperty("--viewport-tail-color", seamColor);
+  chromeSurfaces.chat = { top:topColor, tail:seamColor };
+  if (activeChromeSurface === "chat") paintChromeSurface(chromeSurfaces.chat);
+}
+function loadSurfaceWallpaperColors(urls,name){
+  const sources = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(resolvedAssetUrl);
+  let sourceIndex = 0;
+  const image = new Image();
+  image.onload = () => {
+    try{
+      const tail = wallpaperTailGeometry(image);
+      chromeSurfaces[name] = {
+        top:sampleImageBand(image,0,Math.max(1,Math.floor(image.height * 0.12))),
+        tail:sampleImageBand(image,tail.start,tail.size)
+      };
+      if (activeChromeSurface === name) paintChromeSurface(chromeSurfaces[name]);
+    }catch(error){ console.warn(`${name} wallpaper color sampling failed`,error); }
+  };
+  image.onerror = () => { sourceIndex += 1; if (sources[sourceIndex]) image.src = sources[sourceIndex]; };
+  if (sources[0]) image.src = sources[0];
 }
 function applyWall(urls){
   const sources = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(resolvedAssetUrl);
@@ -3481,12 +3506,7 @@ function applyWall(urls){
   img.onload = function(){
     try{
       var topCol = sampleImageBand(img, 0, Math.max(1, Math.floor(img.height*0.12)));
-      /* On current iOS standalone PWAs the CSS viewport can stop above the
-         physical screen (for example 812px of a 874px screen). Safari fills
-         the remainder with the root color rather than the root image. Sample
-         the wallpaper where that seam actually occurs so the system-owned
-         strip blends into the image instead of appearing white. */
-      var seam = wallpaperSeamGeometry(img);
+      var seam = wallpaperTailGeometry(img);
       baseWallTopColor = topCol;
       baseWallSeamColor = sampleImageBand(img, seam.start, seam.size);
       syncAdaptiveWallpaperColors();
@@ -3529,7 +3549,7 @@ function applyCustomWall(url, opacity = 100){
   image.onload = () => {
     if (customWallUrl !== requestedUrl) return;
     try{
-      const seam = wallpaperSeamGeometry(image);
+      const seam = wallpaperTailGeometry(image);
       customWallTopColor = sampleImageBand(image, 0, Math.max(1,Math.floor(image.height * 0.12)));
       customWallSeamColor = sampleImageBand(image, seam.start, seam.size);
       syncAdaptiveWallpaperColors();
@@ -3618,6 +3638,7 @@ function closeProfile(){
 try{ localStorage.removeItem("companion_bg"); }catch(e){}
 applyIdentity();
 applyWall(currentWall());
+loadSurfaceWallpaperColors(currentMenuWall(),"menu");
 applyCustomWall(localStorage.getItem(CUSTOM_WALL_KEY) || "", localStorage.getItem(CUSTOM_WALL_OPACITY_KEY) || 100);
 applyAvatar(localStorage.getItem(AVATAR_KEY) || CONFIG.AI_AVATAR);
 applyHumanAvatar(localStorage.getItem(HUMAN_AVATAR_KEY) || CONFIG.HUMAN_AVATAR);
@@ -3657,6 +3678,7 @@ let pageTransitionTimer = null;
 let menuInteractionReadyAt = 0;
 function openMenu(){
   if (!menuPanel) return;
+  applyChromeSurface("menu");
   refreshDays();
   menuInteractionReadyAt = Date.now() + 500;
   clearTimeout(menuCloseTimer);
@@ -3671,6 +3693,7 @@ function closeMenu(){
 }
 function openConversationList(){
   if (!conversationPanel) return;
+  applyChromeSurface("menu");
   musicCollapseDrawer();
   renderConversationList();
   clearTimeout(conversationCloseTimer);
@@ -3687,6 +3710,7 @@ function closeConversationList(){
 }
 function openMemoryPage(){
   if (!memoryPanel) return;
+  applyChromeSurface("menu");
   renderMemoryPage();
   clearTimeout(memoryCloseTimer);
   memoryPanel.classList.remove("hidden");
@@ -4063,6 +4087,7 @@ async function musicLoadLibrary(force = false){
 }
 function openMusicPage(){
   if (!musicPanel) return;
+  applyChromeSurface("music");
   clearTimeout(musicCloseTimer);
   musicShowView(musicLibraryView);
   musicPanel.classList.remove("hidden");
@@ -4489,7 +4514,10 @@ document.addEventListener("keydown", event => { if (event.key === "Escape" && mu
 if (conversationBack) conversationBack.addEventListener("click", showMenuFromConversations);
 if (memoryBack) memoryBack.addEventListener("click", showMenuFromMemory);
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && menuPanel && !menuPanel.classList.contains("hidden")) closeMenu();
+  if (e.key === "Escape" && menuPanel && !menuPanel.classList.contains("hidden")){
+    applyChromeSurface("chat");
+    closeMenu();
+  }
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshDays(); });
 
@@ -4509,6 +4537,7 @@ function setTheme(mode){
   try{ localStorage.setItem(THEME_KEY, t); }catch(e){}
   syncThemeSeg();
   applyWall(currentWall());
+  loadSurfaceWallpaperColors(currentMenuWall(),"menu");
 }
 syncThemeSeg();
 if (themeSeg) themeSeg.addEventListener("click", e => {
@@ -4794,6 +4823,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
 
   function showIncomingCall(text){
     if (open || !incomingOverlay) return;
+    applyChromeSurface("callLight");
     pendingIncomingText = String(text || "").trim();
     if (incomingTextEl) incomingTextEl.textContent = "Incoming call...";
     incomingOpen = true;
@@ -4810,6 +4840,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     setTimeout(() => {
       if (!incomingOpen) incomingOverlay.classList.add("hidden");
     }, 380);
+    if (!open) applyChromeSurface("chat");
   }
 
   async function acceptIncomingCall(){
@@ -5269,12 +5300,14 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     if (!open || minimized) return;
     minimized = true;
     overlay.classList.add("minimized");
+    applyChromeSurface("chat");
     setWaveLevel(0);
   }
   function expandCall(){
     if (!open || !minimized) return;
     minimized = false;
     overlay.classList.remove("minimized");
+    applyChromeSurface(callDarkMode ? "callDark" : "callLight");
     renderTranscriptState();
   }
 
@@ -5300,6 +5333,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     speakerLoud = false;
     callDarkMode = false;
     updateCallThemeButton();
+    applyChromeSurface("callLight");
     overlay.classList.remove("minimized");
     if (callMuteBtn) callMuteBtn.classList.remove("active");
     applyCallTtsVolume();
@@ -5327,6 +5361,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     minimized = false;
     callDarkMode = false;
     updateCallThemeButton();
+    applyChromeSurface("chat");
     overlay.classList.remove("minimized");
     overlay.classList.remove("open");
     overlay.setAttribute("aria-hidden", "true");
@@ -5546,6 +5581,7 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   if (callPrivateBtn) callPrivateBtn.addEventListener("click", () => {
     callDarkMode = !callDarkMode;
     updateCallThemeButton();
+    if (open && !minimized) applyChromeSurface(callDarkMode ? "callDark" : "callLight");
   });
   if (callSpeakerBtn) callSpeakerBtn.addEventListener("click", () => {
     speakerLoud = !speakerLoud;
@@ -8468,6 +8504,7 @@ async function enterConversation(id){
   saveConversationIndex();
   const messages = await readCachedMessages();
   startChat(messages.slice(-HISTORY_PAGE_SIZE), { connect:!target.readOnly, fromCache:true });
+  applyChromeSurface("chat");
   applyConversationMode();
   clearTimeout(pageTransitionTimer);
   closeMenu();
@@ -9500,6 +9537,7 @@ function handle401(){
 }
 
 function showLogin(msg){
+  applyChromeSurface("chat");
   loginEl.classList.remove("hidden");
   appEl.classList.add("hidden");
   $("#loginErr").textContent = msg || "";
@@ -9557,6 +9595,7 @@ function startRealtime(){
   }, 25000);
 }
 function startChat(initialMsgs, { connect = true, fromCache = false } = {}){
+  applyChromeSurface("chat");
   loginEl.classList.add("hidden");
   appEl.classList.remove("hidden");
   setConn("offline");
@@ -10322,7 +10361,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v148";
+  const SW_BUILD = "v149";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
