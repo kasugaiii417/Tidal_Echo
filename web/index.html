@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.webmanifest?build=v146">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -59,6 +59,9 @@
     --human-avatar-default: var(--avatar-default);
     --custom-wall-image: none;
     --custom-wall-opacity: 0;
+    /* iOS standalone paints the area below its shortened layout viewport as a
+       flat root color. Keep that color close to the wallpaper at the seam. */
+    --viewport-tail-color: #e1e6ed;
     /* ── PEARL TIDE · 珍珠潮汐(default) ── */
     --bg: #F7FAFC;
     --header-bg: #F7FAFC;
@@ -146,20 +149,21 @@
       --field-bg: rgba(244,242,239,.92);
       --slider-thumb: #4A5D6C;
       --status-dot: #6FA98C;
+      --viewport-tail-color: #ede9e4;
   }
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body{ margin:0; padding:0; height:100%; overscroll-behavior:none; }
   html{
     overflow:hidden;
-    background-color:var(--bg);
+    background-color:var(--viewport-tail-color);
     background-image:var(--wall-default);
     background-size:cover;
     background-position:center;
   }
   body{ position: fixed; inset: 0 0 auto 0; width: 100%; height:var(--screen-height);
     overflow:visible;
-    background-color: var(--bg);
+    background-color: var(--viewport-tail-color);
     background-image: var(--wall-default);
     background-size: cover;
     background-position: center;
@@ -3427,16 +3431,33 @@ function applyWall(urls){
   const sources = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(resolvedAssetUrl);
   const image = sources.map(url => `url("${url}")`).join(", ");
   wallEl.style.backgroundImage = image;
-  var de = document.documentElement, bd = document.body;
+  var de = document.documentElement;
 
   var img = new Image();
   img.onload = function(){
     try{
       var topCol = sampleImageBand(img, 0, Math.max(1, Math.floor(img.height*0.12)));
-      var botCol = sampleImageBand(img, Math.floor(img.height*0.88), Math.max(1, Math.floor(img.height*0.12)));
+      /* On current iOS standalone PWAs the CSS viewport can stop above the
+         physical screen (for example 812px of a 874px screen). Safari fills
+         the remainder with the root color rather than the root image. Sample
+         the wallpaper where that seam actually occurs so the system-owned
+         strip blends into the image instead of appearing white. */
+      var viewportValues = [
+        window.innerHeight || 0,
+        de.clientHeight || 0,
+        window.visualViewport
+          ? (window.visualViewport.height || 0) + (window.visualViewport.offsetTop || 0)
+          : 0
+      ].filter(function(value){ return value > 0; });
+      var visibleHeight = viewportValues.length ? Math.min.apply(Math, viewportValues) : 0;
+      var physicalHeight = window.screen && window.screen.height ? window.screen.height : visibleHeight;
+      var seamRatio = physicalHeight > 0 ? visibleHeight / physicalHeight : 0.93;
+      seamRatio = Math.max(0.72, Math.min(0.995, seamRatio));
+      var seamStart = Math.floor(img.height * Math.max(0, seamRatio - 0.008));
+      var seamSize = Math.max(1, Math.floor(img.height * 0.016));
+      var seamCol = sampleImageBand(img, seamStart, seamSize);
       setThemeColor(topCol);
-      de.style.setProperty("background-color", botCol, "important");
-      bd.style.setProperty("background-color", botCol, "important");
+      de.style.setProperty("--viewport-tail-color", seamCol);
     }catch(e){}
   };
   let sourceIndex = 0;
@@ -10244,7 +10265,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v145";
+  const SW_BUILD = "v146";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
