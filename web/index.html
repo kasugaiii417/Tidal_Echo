@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v149">
+<link rel="manifest" href="manifest.webmanifest?build=v150">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -1667,17 +1667,6 @@
   .menu-chev{ color: var(--text-faint); display:grid; place-items:center; }
   .menu-chev svg{ width:15px; height:15px; display:block; }
 
-  /* footer */
-  .menu-foot{
-    flex: 1 1 auto;
-    display:flex; align-items:flex-end; justify-content:center;
-    text-align:center;
-    padding-top: clamp(22px, 6vw, 40px);
-    font-family: var(--font-en), var(--font-cn);
-    font-size: clamp(10.5px, 2.7vw, 12.5px); font-style:italic;
-    letter-spacing:.05em; color: var(--text-faint);
-  }
-
   /* ── MARGINALIA · shared music library ── */
   .music-panel{ position:fixed; inset:0; bottom:calc(-1 * var(--ios-pwa-safe-bleed)); z-index:198; pointer-events:none; opacity:0; transform:translateX(100%); transition:transform .38s var(--ease-soft),opacity .28s ease; }
   .music-panel.open{ pointer-events:auto; opacity:1; transform:none; }
@@ -2933,9 +2922,6 @@
           <span class="menu-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
       </nav>
-
-      <!-- footer -->
-      <div class="menu-foot">in endless tides, we find each other.</div>
     </div>
   </div>
 </div>
@@ -3465,6 +3451,7 @@ const chromeSurfaces = {
   callLight:{ top:"rgb(244,244,245)", tail:"rgb(225,230,237)" },
   callDark:{ top:"rgb(11,10,9)", tail:"rgb(11,10,9)" }
 };
+const surfaceColorRequestIds = Object.create(null);
 function paintChromeSurface(surface){
   if (!surface) return;
   setThemeColor(surface.top);
@@ -3483,14 +3470,20 @@ function syncAdaptiveWallpaperColors(){
 }
 function loadSurfaceWallpaperColors(urls,name){
   const sources = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(resolvedAssetUrl);
+  const requestId = (surfaceColorRequestIds[name] || 0) + 1;
+  surfaceColorRequestIds[name] = requestId;
   let sourceIndex = 0;
   const image = new Image();
   image.onload = () => {
+    if (surfaceColorRequestIds[name] !== requestId) return;
     try{
       const tail = wallpaperTailGeometry(image);
+      const sampledTail = sampleImageBand(image,tail.start,tail.size);
       chromeSurfaces[name] = {
         top:sampleImageBand(image,0,Math.max(1,Math.floor(image.height * 0.12))),
-        tail:sampleImageBand(image,tail.start,tail.size)
+        /* The light Home wallpaper's raw last pixels are cool blue, while its
+           composited visible edge is #ebeaea because of the page scrim. */
+        tail:name === "menu" && currentTheme() === "light" ? "rgb(235,234,234)" : sampledTail
       };
       if (activeChromeSurface === name) paintChromeSurface(chromeSurfaces[name]);
     }catch(error){ console.warn(`${name} wallpaper color sampling failed`,error); }
@@ -10361,7 +10354,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v149";
+  const SW_BUILD = "v150";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
