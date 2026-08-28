@@ -95,7 +95,7 @@
     --motion-normal: 260ms;
     --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
     /* composer 占据的底部区域(含安全区/键盘):scroll 底 padding 与边缘渐隐共用同一来源,保持对齐 */
-    --composer-zone: calc(var(--composer-h) + 16px + env(safe-area-inset-bottom) + var(--keyboard-offset));
+    --composer-zone: calc(var(--composer-h) + 16px + env(safe-area-inset-bottom) + var(--ios-pwa-bottom-bleed) + var(--keyboard-offset));
     --edge-fade-top: clamp(24px, 5vw, 52px);
     --edge-fade-tail: clamp(16px, 3vw, 30px);
     /* profile / settings — frosted glass, blends into the wallpaper */
@@ -150,7 +150,7 @@
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
-  body{ position: fixed; inset: 0; bottom:calc(-1 * var(--ios-pwa-safe-bleed)); width: 100%;
+  body{ position: fixed; inset: 0 0 auto 0; width: 100%; height:var(--screen-height);
     background-color: var(--bg);
     background-image: var(--wall-default);
     background-size: cover;
@@ -181,7 +181,7 @@
     position:fixed;
     inset:0;
     width:100vw;
-    height:calc(var(--screen-height) + var(--ios-pwa-safe-bleed));
+    height:var(--screen-height);
     z-index:0;
     background-color: var(--bg);
     background-image: var(--wall-default);
@@ -3374,53 +3374,6 @@ const systemPromptInput = $("#systemPromptInput"), systemPromptHint = $("#system
 const memoryNewEditor = $("#memoryNewEditor"), memoryNewContent = $("#memoryNewContent");
 const memoryNewCancel = $("#memoryNewCancel"), memoryNewSave = $("#memoryNewSave");
 const memoryExport = $("#memoryExport"), memoryImport = $("#memoryImport"), memoryImportInput = $("#memoryImportInput");
-
-/* Hidden iOS viewport diagnostic: tap the header status five times. This is
-   intentionally invisible during normal use and never reads chat/auth data. */
-const FRONTEND_BUILD = "v143";
-let viewportDebugTaps = [];
-function viewportRect(selector){
-  const element = document.querySelector(selector);
-  if (!element) return "missing";
-  const rect = element.getBoundingClientRect();
-  return `${Math.round(rect.top)},${Math.round(rect.bottom)} h=${Math.round(rect.height)}`;
-}
-function showViewportDiagnostic(){
-  const probe = document.createElement("div");
-  probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)";
-  document.body.appendChild(probe);
-  const probeStyle = getComputedStyle(probe);
-  const safeTop = probeStyle.paddingTop;
-  const safeBottom = probeStyle.paddingBottom;
-  probe.remove();
-  const vv = window.visualViewport;
-  const rootStyle = getComputedStyle(document.documentElement);
-  const standalone = !!navigator.standalone || window.matchMedia("(display-mode: standalone)").matches;
-  const lines = [
-    `Tidal Echo ${FRONTEND_BUILD}`,
-    `standalone=${standalone} dpr=${window.devicePixelRatio}`,
-    `screen=${screen.width}x${screen.height} avail=${screen.availWidth}x${screen.availHeight}`,
-    `inner=${innerWidth}x${innerHeight} client=${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`,
-    `visual=${vv ? `${Math.round(vv.width)}x${Math.round(vv.height)} top=${Math.round(vv.offsetTop)} scale=${vv.scale}` : "missing"}`,
-    `safe=${safeTop}/${safeBottom}`,
-    `bleed=${rootStyle.getPropertyValue("--ios-pwa-bottom-bleed").trim()} effective=${rootStyle.getPropertyValue("--ios-pwa-safe-bleed").trim()}`,
-    `body=${viewportRect("body")}`,
-    `app=${viewportRect("#app")}`,
-    `wall=${viewportRect("#wall")}`,
-    `menu=${viewportRect("#menuPanel")}`,
-    `composer=${viewportRect(".composer")}`
-  ];
-  alert(lines.join("\n"));
-}
-if (statusEl) statusEl.addEventListener("click", () => {
-  const now = Date.now();
-  viewportDebugTaps = viewportDebugTaps.filter(time => now - time < 3500);
-  viewportDebugTaps.push(now);
-  if (viewportDebugTaps.length >= 5){
-    viewportDebugTaps = [];
-    showViewportDiagnostic();
-  }
-});
 
 /* ════════ 固定聊天背景 + 本地头像 ════════ */
 const THEMES = ["light","harbor"];
@@ -10283,7 +10236,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v143";
+  const SW_BUILD = "v144";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
