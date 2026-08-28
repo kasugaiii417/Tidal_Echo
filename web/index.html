@@ -6463,7 +6463,7 @@ function resetChatState(){
   freshKeys.clear();
   hideNewMsgPill();
 }
-function setMessage(raw, { render = true, cache = true, journal = cache } = {}){
+function setMessage(raw, { render = true, cache = true, journal = cache, conversationId = activeConversationId } = {}){
   raw = extractAssistantStatus(raw);
   const key = msgKey(raw.id);
   if (raw._statusOnly){
@@ -6490,12 +6490,13 @@ function setMessage(raw, { render = true, cache = true, journal = cache } = {}){
   if (cache) scheduleCacheSave({ allowShrink:raw.status === "failed" });
   if (journal){
     const stored = messageByKey.get(key);
-    if (stored) void queueMessageJournalPut(activeConversationId, stored);
+    if (stored && stored.status === "failed") void queueMessageJournalDelete(conversationId,key);
+    else if (stored) void queueMessageJournalPut(conversationId, stored);
   }
   scheduleTerminalRender();
   return messageByKey.get(key);
 }
-function removeMessage(key, { render = true, cache = true } = {}){
+function removeMessage(key, { render = true, cache = true, journal = cache } = {}){
   const k = msgKey(key);
   const m = messageByKey.get(k);
   if (!m) return null;
@@ -6510,7 +6511,7 @@ function removeMessage(key, { render = true, cache = true } = {}){
     void deleteTtsAudio(audioKey);
   }
   seen.delete(k);
-  void queueMessageJournalDelete(activeConversationId, k);
+  if (journal) void queueMessageJournalDelete(activeConversationId, k);
   invalidateRows();
   if (render) scheduleRender({ preserveAnchor: true });
   scheduleTerminalRender();
@@ -7349,7 +7350,15 @@ function scheduleRender({ stickToBottom = false, preserveAnchor = false, anchorO
     const savedAnchor = scheduleRender._anchor;
     scheduleRender._stick = false;
     scheduleRender._anchor = null;
-    renderVirtualList({ stickToBottom: stick, anchor: savedAnchor });
+    try{
+      renderVirtualList({ stickToBottom: stick, anchor: savedAnchor });
+    }catch(error){
+      console.error("Chat render recovered from an error",error);
+      nodeCache.clear(); rowHeights.clear(); renderedSignature = "";
+      rowsDirty = true; prefixSumsDirty = true;
+      try{ renderVirtualList({ stickToBottom:stick }); }
+      catch(retryError){ console.error("Chat render retry failed",retryError); }
+    }
   });
 }
 
@@ -7872,6 +7881,8 @@ function openMessageDb(){
   return new Promise((resolve, reject) => {
     if (!window.indexedDB){ reject(new Error("indexedDB unavailable")); return; }
     const req = indexedDB.open(CACHE_DB, 4);
+    let settled = false;
+    const timer = setTimeout(() => { if (!settled){ settled = true; reject(new Error("indexedDB open timed out")); } },5000);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE, { keyPath:"id" });
@@ -7882,8 +7893,12 @@ function openMessageDb(){
         journal.createIndex("conversationId", "conversationId", { unique:false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error || new Error("indexedDB open"));
+    req.onsuccess = () => {
+      if (settled){ try{ req.result.close(); }catch(_){ } return; }
+      settled = true; clearTimeout(timer); resolve(req.result);
+    };
+    req.onerror = () => { if (!settled){ settled = true; clearTimeout(timer); reject(req.error || new Error("indexedDB open")); } };
+    req.onblocked = () => { if (!settled){ settled = true; clearTimeout(timer); reject(new Error("indexedDB open blocked")); } };
   });
 }
 function journalMessageRecord(conversationId, message){
@@ -7900,34 +7915,47 @@ function journalMessageRecord(conversationId, message){
     updatedAt:Date.now()
   };
 }
-let messageJournalChain = Promise.resolve();
+const messageJournalChains = new Map();
+function runJournalOperation(recordId, operation){
+  const previous = messageJournalChains.get(recordId) || Promise.resolve();
+  const next = previous.catch(() => {}).then(operation);
+  const tracked = next.catch(error => console.error("message journal operation failed",error));
+  messageJournalChains.set(recordId,tracked);
+  tracked.finally(() => { if (messageJournalChains.get(recordId) === tracked) messageJournalChains.delete(recordId); });
+  return tracked;
+}
+async function flushMessageJournalWrites(){
+  await Promise.allSettled(Array.from(messageJournalChains.values()));
+}
 function queueMessageJournalPut(conversationId, message){
-  if (!conversationId || !message || message.status === "streaming" || message.status === "failed") return messageJournalChain;
+  if (!conversationId || !message || message.status === "failed") return Promise.resolve();
   const record = journalMessageRecord(conversationId, message);
-  messageJournalChain = messageJournalChain.catch(() => {}).then(async () => {
+  return runJournalOperation(record.id,async () => {
     const db = await openMessageDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(MESSAGE_JOURNAL_STORE, "readwrite");
+      const timer = setTimeout(() => { try{ tx.abort(); }catch(_){} },5000);
       tx.objectStore(MESSAGE_JOURNAL_STORE).put(record);
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { const error = tx.error || new Error("message journal write"); db.close(); reject(error); };
+      tx.oncomplete = () => { clearTimeout(timer); db.close(); resolve(); };
+      tx.onerror = () => { clearTimeout(timer); const error = tx.error || new Error("message journal write"); db.close(); reject(error); };
+      tx.onabort = () => { clearTimeout(timer); const error = tx.error || new Error("message journal write timed out"); db.close(); reject(error); };
     });
-  }).catch(error => console.error("message journal write failed", error));
-  return messageJournalChain;
+  });
 }
 function queueMessageJournalDelete(conversationId, messageId){
-  if (!conversationId) return messageJournalChain;
+  if (!conversationId) return Promise.resolve();
   const id = `${conversationId}\u0000${msgKey(messageId)}`;
-  messageJournalChain = messageJournalChain.catch(() => {}).then(async () => {
+  return runJournalOperation(id,async () => {
     const db = await openMessageDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(MESSAGE_JOURNAL_STORE, "readwrite");
+      const timer = setTimeout(() => { try{ tx.abort(); }catch(_){} },5000);
       tx.objectStore(MESSAGE_JOURNAL_STORE).delete(id);
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { const error = tx.error || new Error("message journal delete"); db.close(); reject(error); };
+      tx.oncomplete = () => { clearTimeout(timer); db.close(); resolve(); };
+      tx.onerror = () => { clearTimeout(timer); const error = tx.error || new Error("message journal delete"); db.close(); reject(error); };
+      tx.onabort = () => { clearTimeout(timer); const error = tx.error || new Error("message journal delete timed out"); db.close(); reject(error); };
     });
-  }).catch(error => console.error("message journal delete failed", error));
-  return messageJournalChain;
+  });
 }
 async function readMessageJournal(conversationId){
   try{
@@ -8035,6 +8063,13 @@ async function readConversationIndexed(id = activeConversationId){
         }
         db.close();
         const sortedRecovered = recovered === null ? null : recovered.sort((a, b) => msgNum(a.id) - msgNum(b.id));
+        if (sortedRecovered){
+          try{
+            const countKey = `${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`;
+            const known = Number(localStorage.getItem(countKey) || 0) || 0;
+            if (sortedRecovered.length > known) localStorage.setItem(countKey,String(sortedRecovered.length));
+          }catch(_){ }
+        }
         // Repair the primary immediately, before the UI narrows the in-memory
         // window to its latest page and schedules another partial save.
         if (repairedFromBackup && sortedRecovered){
@@ -8053,15 +8088,35 @@ async function writeConversationIndexed(id, messages, { allowShrink = false } = 
     const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
     const store = tx.objectStore(CONVERSATION_CACHE_STORE);
     const currentReq = store.get(id);
-    currentReq.onsuccess = () => {
+    const backupReq = store.get(`${id}:messages_backup`);
+    const timer = setTimeout(() => { try{ tx.abort(); }catch(_){} },8000);
+    let prepared = false;
+    let savedCount = 0;
+    let previousKnownCount = 0;
+    const prepareWrite = () => {
+      if (prepared || currentReq.readyState !== "done" || backupReq.readyState !== "done") return;
+      prepared = true;
       const current = currentReq.result && Array.isArray(currentReq.result.messages) ? currentReq.result.messages : null;
+      const previousBackup = backupReq.result && Array.isArray(backupReq.result.messages) ? backupReq.result.messages : null;
+      let knownCount = 0;
+      try{ knownCount = Number(localStorage.getItem(`${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`) || 0) || 0; }catch(_){ }
+      previousKnownCount = knownCount;
+      if (!allowShrink && !current && messages.length < knownCount){
+        console.warn("Refused to overwrite a missing conversation with a shorter snapshot",{ id, incoming:messages.length, knownCount });
+        try{ tx.abort(); }catch(_){ }
+        return;
+      }
       let nextMessages = messages;
       // The UI keeps only a recent window in memory. Never replace the full
       // IndexedDB conversation with that partial snapshot: overlay it by ID and
       // remove only messages the user explicitly deleted.
-      if (current){
+      if (current || previousBackup){
         const merged = new Map();
-        current.forEach(message => {
+        (previousBackup || []).forEach(message => {
+          const key = msgKey(message && message.id);
+          if (!deletedKeys.has(key)) merged.set(key, message);
+        });
+        (current || []).forEach(message => {
           const key = msgKey(message && message.id);
           if (!deletedKeys.has(key)) merged.set(key, message);
         });
@@ -8070,14 +8125,25 @@ async function writeConversationIndexed(id, messages, { allowShrink = false } = 
           if (deletedKeys.has(key)) merged.delete(key); else merged.set(key, message);
         });
         nextMessages = Array.from(merged.values()).sort((a, b) => msgNum(a.id) - msgNum(b.id));
-        store.put({ id:`${id}:messages_backup`, messages:current, updatedAt:currentReq.result.updatedAt || Date.now() });
       }
+      const backupMerged = new Map();
+      (previousBackup || []).forEach(message => { const key = msgKey(message && message.id); if (!deletedKeys.has(key)) backupMerged.set(key,message); });
+      (current || []).forEach(message => { const key = msgKey(message && message.id); if (deletedKeys.has(key)) backupMerged.delete(key); else backupMerged.set(key,message); });
+      if (backupMerged.size) store.put({ id:`${id}:messages_backup`, messages:Array.from(backupMerged.values()).sort((a,b) => msgNum(a.id) - msgNum(b.id)), updatedAt:Date.now() });
       store.put({ id, messages:nextMessages, updatedAt:Date.now() });
+      savedCount = nextMessages.length;
     };
+    currentReq.onsuccess = prepareWrite;
+    backupReq.onsuccess = prepareWrite;
     currentReq.onerror = () => { try{ tx.abort(); }catch(_){} };
-    tx.oncomplete = () => { db.close(); resolve({ saved:true, skipped:false }); };
-    tx.onerror = () => { const error = tx.error || new Error("conversation cache write"); db.close(); reject(error); };
-    tx.onabort = () => { const error = tx.error || new Error("conversation cache aborted"); db.close(); reject(error); };
+    backupReq.onerror = () => { try{ tx.abort(); }catch(_){} };
+    tx.oncomplete = () => {
+      clearTimeout(timer); db.close();
+      try{ localStorage.setItem(`${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`,String(allowShrink ? savedCount : Math.max(previousKnownCount,savedCount))); }catch(_){ }
+      resolve({ saved:true, skipped:false });
+    };
+    tx.onerror = () => { clearTimeout(timer); const error = tx.error || new Error("conversation cache write"); db.close(); reject(error); };
+    tx.onabort = () => { clearTimeout(timer); const error = tx.error || new Error(prepared ? "conversation cache aborted" : "conversation cache write timed out or guarded"); db.close(); reject(error); };
   });
 }
 let conversationWriteChain = Promise.resolve();
@@ -8088,6 +8154,7 @@ function queueConversationIndexedWrite(id, messages, options = {}){
   return conversationWriteChain;
 }
 async function deleteConversationIndexed(id){
+  try{ localStorage.removeItem(`${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`); }catch(_){ }
   try{
     const db = await openMessageDb();
     await new Promise((resolve, reject) => {
@@ -8185,7 +8252,7 @@ async function flushMessageCacheNow(){
   if (cacheTimer){ clearTimeout(cacheTimer); cacheTimer = null; }
   const allowShrink = pendingCacheAllowShrink;
   pendingCacheAllowShrink = false;
-  await messageJournalChain.catch(() => {});
+  await flushMessageJournalWrites();
   return writeMessageCache({ allowShrink });
 }
 async function navigateToAlbum(){
@@ -8288,11 +8355,12 @@ function applyConversationMode(){
 async function enterConversation(id){
   const target = conversations.find(c => c.id === id);
   if (!target) return;
+  if (activeGenerationController) stopActiveGeneration();
   await flushMessageCacheNow();
   activeConversationId = target.id;
   saveConversationIndex();
   const messages = await readCachedMessages();
-  startChat(messages, { connect:!target.readOnly, fromCache:true });
+  startChat(messages.slice(-HISTORY_PAGE_SIZE), { connect:!target.readOnly, fromCache:true });
   applyConversationMode();
   clearTimeout(pageTransitionTimer);
   closeMenu();
@@ -8327,7 +8395,7 @@ async function deleteConversation(id){
     activeConversationId = next.id;
     saveConversationIndex();
     const messages = await readCachedMessages();
-    startChat(messages, { connect:!next.readOnly, fromCache:true });
+    startChat(messages.slice(-HISTORY_PAGE_SIZE), { connect:!next.readOnly, fromCache:true });
     applyConversationMode();
   }else{
     saveConversationIndex();
@@ -9660,7 +9728,9 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
   let uncachedInputTokens = null;
   let outputTokens = null;
   let streamPaintTimer = null;
+  let streamCheckpointTimer = null;
   const streamStartedAt = Date.now();
+  const streamConversationId = options.conversationId || activeConversationId;
   const streamChunkIds = [];
   const reconcileStreamChunks = (chunks, status, finalUsageTokens = null) => {
     const stickToBottom = nearBottom();
@@ -9684,9 +9754,26 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
           ? { usage_tokens:finalUsageTokens, input_tokens:uncachedInputTokens, output_tokens:outputTokens, ...(options.voice ? { voice:true } : {}) }
           : (options.voice ? { voice:true } : {}),
         status
-      }, { render:false, cache:false, journal:status !== "streaming" });
+      }, { render:false, cache:false, journal:status !== "streaming", conversationId:streamConversationId });
     });
     scheduleRender({ stickToBottom });
+  };
+  const saveStreamCheckpoint = () => {
+    streamCheckpointTimer = null;
+    const visible = hideIncompleteStickerWhileStreaming(hideAssistantVoiceWhileStreaming(hideCallMarkersWhileStreaming(hideMemoryOperationsWhileStreaming(text))));
+    if (!visible.trim()) return;
+    void queueMessageJournalPut(streamConversationId,{
+      id:aiId,
+      ts:new Date(streamStartedAt).toISOString(),
+      from:"ai",
+      kind:"reply",
+      text:visible,
+      meta:{ stream_checkpoint:true, ...(options.voice ? { voice:true } : {}) },
+      status:"streaming"
+    });
+  };
+  const scheduleStreamCheckpoint = () => {
+    if (!streamCheckpointTimer) streamCheckpointTimer = setTimeout(saveStreamCheckpoint,700);
   };
   const paintStream = () => {
     streamPaintTimer = null;
@@ -9721,7 +9808,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
           const block = { type:"text", text:source.text || "" };
           contentBlocks[index] = block;
           blocksByIndex.set(index, block);
-          if (block.text){ text += block.text; scheduleStreamPaint(); }
+          if (block.text){ text += block.text; scheduleStreamPaint(); scheduleStreamCheckpoint(); }
         }
       }
       if ((eventName === "content_block_delta" || ev.type === "content_block_delta") && ev.delta && ev.delta.type === "text_delta"){
@@ -9731,6 +9818,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
         const block = blocksByIndex.get(Number(ev.index));
         if (block && block.type === "text") block.text += deltaText;
         scheduleStreamPaint();
+        scheduleStreamCheckpoint();
       }
       if ((eventName === "content_block_delta" || ev.type === "content_block_delta") && ev.delta && ev.delta.type === "input_json_delta"){
         const block = blocksByIndex.get(Number(ev.index));
@@ -9764,13 +9852,14 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
       if (done) break;
     }
   }catch(error){
-    if (signal && signal.aborted) interrupted = true;
-    else throw error;
+    interrupted = true;
+    if (!(signal && signal.aborted)) console.warn("Gateway stream ended before message_stop; preserving received text",error);
   }
   if (signal && signal.aborted) interrupted = true;
   if (buffer.startsWith("data:")) dataLines.push(buffer.slice(5).trimStart());
   flush();
   if (streamPaintTimer){ clearTimeout(streamPaintTimer); streamPaintTimer = null; }
+  if (streamCheckpointTimer){ clearTimeout(streamCheckpointTimer); streamCheckpointTimer = null; }
   const cleanContentBlocks = contentBlocks.filter(Boolean).map(block => {
     if (block.type === "tool_use") return { type:block.type, id:block.id, name:block.name, input:block.input || {} };
     return { type:"text", text:stripVoiceCallControlMarkers(block.text) };
@@ -9791,6 +9880,7 @@ async function consumeAnthropicStream(response, aiId, signal, options = {}){
     streamChunkIds.forEach(id => removeMessage(id, { render:false, cache:false }));
     streamChunkIds.length = 0;
     scheduleRender({ stickToBottom:nearBottom() });
+    await queueMessageJournalDelete(streamConversationId,aiId);
     await flushMessageCacheNow();
     return { text:"", contentBlocks:cleanContentBlocks, toolUses, stopReason, interrupted, hangup:assistantRequestedHangup };
   }
@@ -9918,6 +10008,7 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
   if (currentConversation() && currentConversation().readOnly) throw new Error("read-only conversation");
   if (USE_MOCK) return Mock.send(text || "");
   const humanId = Number(reservedHumanId) > 0 ? Number(reservedHumanId) : localMessageId();
+  const generationConversationId = activeConversationId;
   const generationController = options.controller || new AbortController();
   if (!options.voice){
     activeGenerationController = generationController;
@@ -9947,7 +10038,7 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
         if (generationController.signal.aborted) return { id:humanId, aborted:true };
         throw error;
       }
-      const streamed = await consumeAnthropicStream(response, localMessageId(), generationController.signal, options);
+      const streamed = await consumeAnthropicStream(response, localMessageId(), generationController.signal, { ...options, conversationId:generationConversationId });
       finalText = stripVoiceCallControlMarkers(String(streamed.text || "").replace(/\[call\]/gi, ""));
       assistantRequestedHangup = assistantRequestedHangup || !!streamed.hangup;
       if (streamed.interrupted || generationController.signal.aborted) return { id:humanId, aborted:true };
@@ -10020,7 +10111,7 @@ async function init(){
   let showedCache = false;
   const cached = await readCachedMessages();
   if (cached.length){
-    startChat(sessionFiltered(cached), { connect:false, fromCache:true });
+    startChat(sessionFiltered(cached).slice(-HISTORY_PAGE_SIZE), { connect:false, fromCache:true });
     updateConversationSummary(cached);
     showedCache = true;
   }
