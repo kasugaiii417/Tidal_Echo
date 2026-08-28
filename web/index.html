@@ -1562,7 +1562,10 @@
   /* ── Menu (hub / home page · 从聊天页左箭头进入) ── */
   .menu-panel{
     position: fixed; inset: 0; z-index: 190;
-    bottom:calc(-1 * var(--ios-pwa-safe-bleed));
+    /* Keep interactive home content inside Safari's real viewport. The root
+       canvas handles the system-owned strip below it; extending this panel
+       there made the footer scroll underneath an unpaintable area. */
+    bottom:0;
     pointer-events: none;
     transform: translateX(-100%);
     opacity: 0;
@@ -10265,7 +10268,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v146";
+  const SW_BUILD = "v147";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
