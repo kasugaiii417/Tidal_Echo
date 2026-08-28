@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v151">
+<link rel="manifest" href="manifest.webmanifest?build=v152">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -149,7 +149,7 @@
       --field-bg: rgba(244,242,239,.92);
       --slider-thumb: #4A5D6C;
       --status-dot: #6FA98C;
-      --viewport-tail-color: #ede9e4;
+      --viewport-tail-color: #ebe9e7;
   }
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -3473,7 +3473,7 @@ let customWallSeamColor = "";
 let activeChromeSurface = "chat";
 const chromeSurfaces = {
   chat:{ top:baseWallTopColor, tail:baseWallSeamColor },
-  menu:{ top:"rgb(244,244,245)", tail:"rgb(233,237,243)" },
+  menu:{ top:"rgb(244,244,245)", tail:currentTheme() === "harbor" ? "rgb(235,233,231)" : "rgb(238,233,228)" },
   music:{ top:"rgb(11,10,9)", tail:"rgb(11,10,9)" },
   callLight:{ top:"rgb(244,244,245)", tail:"rgb(225,230,237)" },
   callDark:{ top:"rgb(11,10,9)", tail:"rgb(11,10,9)" }
@@ -3508,8 +3508,12 @@ function loadSurfaceWallpaperColors(urls,name){
       const sampledTail = sampleImageBand(image,tail.start,tail.size);
       chromeSurfaces[name] = {
         top:sampleImageBand(image,0,Math.max(1,Math.floor(image.height * 0.12))),
-        /* Home uses a warmer paper edge than the source image's cool pixels. */
-        tail:name === "menu" && currentTheme() === "light" ? "rgb(238,233,228)" : sampledTail
+        /* Each Home wallpaper ends in a different paper tone. Its source file
+           has cool pixels at the very bottom, so match the rendered page edge
+           for the active theme instead of leaking the other preset's blue. */
+        tail:name === "menu"
+          ? (currentTheme() === "harbor" ? "rgb(235,233,231)" : "rgb(238,233,228)")
+          : sampledTail
       };
       if (activeChromeSurface === name) paintChromeSurface(chromeSurfaces[name]);
     }catch(error){ console.warn(`${name} wallpaper color sampling failed`,error); }
@@ -10409,7 +10413,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v151";
+  const SW_BUILD = "v152";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
