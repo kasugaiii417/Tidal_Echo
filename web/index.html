@@ -123,6 +123,7 @@
     --call-scrim: rgba(64,82,102,.06);
     --call-hangup-bg: #cf8d92;
     --call-hangup-shadow: rgba(176,96,104,.34);
+    --call-toolbar-lift: clamp(14px, 2.1vh, 22px);
   }
   /* ── HARBOR · 海港(通用开源主题 / Tidal Echo) ── 中性冷调,供 fork 使用;只覆盖带色相变量,其余继承 PEARL TIDE */
   :root[data-theme="harbor"]{
@@ -2231,6 +2232,14 @@
     flex-shrink: 0;
     margin-top: auto;
   }
+  /* Keep the complete call control cluster above the taller iPhone Home Screen
+     bottom inset without changing the spacing between its individual rows. */
+  .call-transcript-section,
+  .call-controls,
+  .call-hangup{
+    position: relative;
+    top: calc(-1 * var(--call-toolbar-lift));
+  }
   .call-transcript-label{
     position: relative;
     display: flex; align-items: center; justify-content: center;
@@ -3477,8 +3486,8 @@ const chromeSurfaces = {
   chat:{ top:baseWallTopColor, tail:baseWallSeamColor },
   menu:{ top:"rgb(244,244,245)", tail:currentTheme() === "harbor" ? "rgb(235,233,231)" : "rgb(238,233,228)" },
   music:{ top:"rgb(11,10,9)", tail:"rgb(11,10,9)" },
-  callLight:{ top:"rgb(244,244,245)", tail:"rgb(225,230,237)" },
-  callDark:{ top:"rgb(11,10,9)", tail:"rgb(11,10,9)" }
+  callLight:{ top:baseWallTopColor, tail:baseWallSeamColor },
+  callDark:{ top:"rgb(17,15,13)", tail:"rgb(8,7,6)" }
 };
 const surfaceColorRequestIds = Object.create(null);
 function paintChromeSurface(surface){
@@ -3495,7 +3504,11 @@ function syncAdaptiveWallpaperColors(){
   const topColor = customWallTopColor ? blendColors(baseWallTopColor, customWallTopColor, opacity) : baseWallTopColor;
   const seamColor = customWallSeamColor ? blendColors(baseWallSeamColor, customWallSeamColor, opacity) : baseWallSeamColor;
   chromeSurfaces.chat = { top:topColor, tail:seamColor };
+  // The light call sheet uses the preset wallpaper (not the custom overlay), so
+  // its iOS-owned bottom strip must follow the preset's sampled final pixels.
+  chromeSurfaces.callLight = { top:baseWallTopColor, tail:baseWallSeamColor };
   if (activeChromeSurface === "chat") paintChromeSurface(chromeSurfaces.chat);
+  else if (activeChromeSurface === "callLight") paintChromeSurface(chromeSurfaces.callLight);
 }
 function loadSurfaceWallpaperColors(urls,name){
   const sources = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(resolvedAssetUrl);
@@ -5279,25 +5292,17 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   }
 
   function unlockCallTtsAudio(){
-    const ctx = ensureTtsCtx();
+    ensureTtsCtx();
     const audio = new Audio();
     ttsAudio = audio;
     audio.preload = "auto";
     audio.playsInline = true;
-    if (ctx){
-      try{
-        ttsMediaSource = ctx.createMediaElementSource(audio);
-        ttsMediaGain = ctx.createGain();
-        ttsMediaGain.gain.value = callTtsVolume();
-        ttsMediaSource.connect(ttsMediaGain);
-        ttsMediaGain.connect(ctx.destination);
-        audio.volume = 1;
-      }catch(error){
-        ttsMediaSource = null;
-        ttsMediaGain = null;
-        audio.volume = callTtsVolume();
-      }
-    }
+    // Keep the unlocked media element on iOS's native playback path. Routing it
+    // through WebAudio while getUserMedia is active can leave newer iPhones on a
+    // silent/receiver-style capture route even though ordinary <audio> works.
+    ttsMediaSource = null;
+    ttsMediaGain = null;
+    audio.volume = callTtsVolume();
     const unlockUrl = URL.createObjectURL(silentWavBlob());
     const unlockToken = String(++ttsUnlockGeneration);
     audio.dataset.callUnlock = unlockToken;
@@ -5455,9 +5460,21 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
   async function speakOne(text){
     let blob = null;
     try{
+      // Releasing the capture session before playback is important on iOS. A
+      // disabled/live mic track can still keep Safari in its recording route.
+      stopDeepgramStt();
+      stopMicrophone();
       console.log("[speak] fetching TTS…");
       blob = await apiTts(text);
       console.log("[speak] blob:", blob && blob.size);
+      if (blob && open){
+        try{
+          await playCallTtsElement(blob);
+          return;
+        }catch(error){
+          console.warn("[speak] native audio playback failed, trying WebAudio:", error);
+        }
+      }
       if (blob && open){
         const ctx = ensureTtsCtx();
         if (ctx){
@@ -5571,6 +5588,47 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
         console.error("[speak] TTS request failed:", e);
       }
     }
+  }
+
+  async function playCallTtsElement(blob){
+    if (!blob || !open) return;
+    if (ttsUrl){ try{ URL.revokeObjectURL(ttsUrl); }catch(e){} ttsUrl = ""; }
+    ttsUrl = URL.createObjectURL(blob);
+    const audio = ttsAudio || new Audio();
+    ttsAudio = audio;
+    delete audio.dataset.callUnlock;
+    audio.src = ttsUrl;
+    audio.preload = "auto";
+    audio.playsInline = true;
+    audio.volume = callTtsVolume();
+    audio.load();
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        if (speakTimeout){ clearTimeout(speakTimeout); speakTimeout = null; }
+        audio.onended = audio.onerror = null;
+        setWaveLevel(0);
+        if (error) reject(error); else resolve();
+      };
+      audio.onended = () => finish();
+      audio.onerror = () => finish(new Error("Native audio could not play TTS"));
+      speakTimeout = setTimeout(() => finish(new Error("Native audio TTS timeout")), 120000);
+      audio.play().then(() => {
+        setCaption("speaking");
+        setTranscript(AI_NAME + " is speaking…", false);
+        const pulse = () => {
+          if (settled || audio.paused || !open) return;
+          if (!minimized) setWaveLevel(.45 + Math.random() * .5);
+          setTimeout(pulse, 140);
+        };
+        pulse();
+      }).catch(finish);
+    });
+    audio.removeAttribute("src");
+    audio.load();
+    if (ttsUrl){ URL.revokeObjectURL(ttsUrl); ttsUrl = ""; }
   }
 
   function incoming(text){
@@ -9272,6 +9330,7 @@ let soundOn = true;
 try{ soundOn = localStorage.getItem("companion_sound") !== "off"; }catch(_){}
 const soundBuffers = {};            // name -> AudioBuffer(已解码) | null(确认无文件) | undefined(未加载)
 let soundLoadStarted = false;
+let soundLoadPromise = null;
 function ensureAudio(){
   if (prefersReducedMotion || !soundOn) return null;
   if (!audioCtx){
@@ -9284,21 +9343,27 @@ function ensureAudio(){
   return audioCtx;
 }
 function loadSounds(){               // 解锁后预解码一次,发消息时即时可播
-  if (soundLoadStarted || !audioCtx) return;
+  if (soundLoadPromise || !audioCtx) return soundLoadPromise;
   soundLoadStarted = true;
-  Object.keys(SOUND_FILES).forEach((name) => {
-    fetch(SOUND_FILES[name])
+  soundLoadPromise = Promise.all(Object.keys(SOUND_FILES).map((name) =>
+    fetch(SOUND_FILES[name], { cache:"force-cache" })
       .then((r) => r.ok ? r.arrayBuffer() : Promise.reject(new Error("missing")))
       .then((buf) => audioCtx.decodeAudioData(buf))
       .then((audioBuf) => { soundBuffers[name] = audioBuf; })
-      .catch(() => { soundBuffers[name] = null; });
-  });
+      .catch(() => { soundBuffers[name] = null; })
+  ));
+  return soundLoadPromise;
 }
-function playSound(name){
+async function playSound(name){
   const ctx = ensureAudio();
-  if (!ctx || ctx.state !== "running") return;   // 未解锁时静默
+  if (!ctx) return;
+  if (ctx.state === "suspended"){
+    try{ await ctx.resume(); }catch(_){ return; }
+  }
+  if (ctx.state !== "running") return;
+  try{ await loadSounds(); }catch(_){ return; }
   const buf = soundBuffers[name];
-  if (!buf) return;                              // 加载中/无文件 → 这次不响
+  if (!buf || ctx.state !== "running") return;
   const src = ctx.createBufferSource();
   const g = ctx.createGain();
   g.gain.value = SOUND_GAIN[name] || 0.85;
@@ -9306,8 +9371,8 @@ function playSound(name){
   src.connect(g); g.connect(ctx.destination);
   try{ src.start(); }catch(_){}
 }
-function playSendSound(){ playSound("send"); }      // 我发出
-function playReceiveSound(){ playSound("send"); }   // incoming from the AI (same chime)
+function playSendSound(){ void playSound("send"); }      // 我发出
+function playReceiveSound(){ void playSound("send"); }   // incoming from the AI (same chime)
 window.addEventListener("pointerdown", ensureAudio, { once:true });   // 进页面首次触摸即解锁+预加载
 
 /* ════════════ 发送 ════════════ */
