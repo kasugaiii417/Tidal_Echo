@@ -5465,15 +5465,36 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
       stopDeepgramStt();
       stopMicrophone();
       console.log("[speak] fetching TTS…");
-      blob = await apiTts(text);
+      let ttsRequestError = null;
+      for (let attempt = 0; attempt < 2 && open; attempt++){
+        try{
+          blob = await apiTts(text);
+          ttsRequestError = null;
+          break;
+        }catch(error){
+          ttsRequestError = error;
+          if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 350));
+        }
+      }
+      if (!blob && ttsRequestError) throw ttsRequestError;
       console.log("[speak] blob:", blob && blob.size);
       if (blob && open){
-        try{
-          await playCallTtsElement(blob);
-          return;
-        }catch(error){
-          console.warn("[speak] native audio playback failed, trying WebAudio:", error);
+        let nativeError = null;
+        for (let attempt = 0; attempt < 2 && open; attempt++){
+          try{
+            await playCallTtsElement(blob);
+            return;
+          }catch(error){
+            nativeError = error;
+            console.warn(`[speak] native audio attempt ${attempt + 1} failed:`, error);
+            if (attempt === 0){
+              setCaption("speaking");
+              setTranscript(AI_NAME + " is speaking…", false);
+              await new Promise(resolve => setTimeout(resolve, 280));
+            }
+          }
         }
+        console.warn("[speak] native audio playback failed, trying WebAudio:", nativeError);
       }
       if (blob && open){
         const ctx = ensureTtsCtx();
@@ -5601,34 +5622,59 @@ if (customWallReset) customWallReset.addEventListener("click", () => {
     audio.preload = "auto";
     audio.playsInline = true;
     audio.volume = callTtsVolume();
-    audio.load();
-    await new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (error) => {
-        if (settled) return;
-        settled = true;
-        if (speakTimeout){ clearTimeout(speakTimeout); speakTimeout = null; }
-        audio.onended = audio.onerror = null;
-        setWaveLevel(0);
-        if (error) reject(error); else resolve();
-      };
-      audio.onended = () => finish();
-      audio.onerror = () => finish(new Error("Native audio could not play TTS"));
-      speakTimeout = setTimeout(() => finish(new Error("Native audio TTS timeout")), 120000);
-      audio.play().then(() => {
-        setCaption("speaking");
-        setTranscript(AI_NAME + " is speaking…", false);
-        const pulse = () => {
-          if (settled || audio.paused || !open) return;
-          if (!minimized) setWaveLevel(.45 + Math.random() * .5);
-          setTimeout(pulse, 140);
+    try{
+      audio.load();
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        let started = false;
+        let progressed = false;
+        let startTimer = null;
+        const cleanupEvents = () => {
+          audio.onplaying = audio.ontimeupdate = audio.onended = audio.onerror = audio.onabort = null;
+          if (startTimer) clearTimeout(startTimer);
         };
-        pulse();
-      }).catch(finish);
-    });
-    audio.removeAttribute("src");
-    audio.load();
-    if (ttsUrl){ URL.revokeObjectURL(ttsUrl); ttsUrl = ""; }
+        const finish = (error) => {
+          if (settled) return;
+          settled = true;
+          if (speakTimeout){ clearTimeout(speakTimeout); speakTimeout = null; }
+          cleanupEvents();
+          setWaveLevel(0);
+          if (error) reject(error); else resolve();
+        };
+        audio.onplaying = () => {
+          started = true;
+          setCaption("speaking");
+          setTranscript(AI_NAME + " is speaking…", false);
+          const pulse = () => {
+            if (settled || audio.paused || !open) return;
+            if (!minimized) setWaveLevel(.45 + Math.random() * .5);
+            setTimeout(pulse, 140);
+          };
+          pulse();
+        };
+        audio.ontimeupdate = () => {
+          if (audio.currentTime >= 0.08) progressed = true;
+        };
+        audio.onended = () => {
+          // iOS may emit ended for an interrupted element that never produced
+          // audible playback. Only accept completion after playback progressed.
+          if (started && (progressed || (Number.isFinite(audio.duration) && audio.duration <= 0.12))) finish();
+          else finish(new Error("Native audio ended before playback started"));
+        };
+        audio.onerror = () => finish(new Error("Native audio could not play TTS"));
+        audio.onabort = () => finish(new Error("Native audio playback was aborted"));
+        startTimer = setTimeout(() => {
+          if (!started || !progressed) finish(new Error("Native audio did not start audibly"));
+        }, 8000);
+        speakTimeout = setTimeout(() => finish(new Error("Native audio TTS timeout")), 120000);
+        Promise.resolve(audio.play()).catch(finish);
+      });
+    }finally{
+      try{ audio.pause(); }catch(_){ }
+      audio.removeAttribute("src");
+      audio.load();
+      if (ttsUrl){ URL.revokeObjectURL(ttsUrl); ttsUrl = ""; }
+    }
   }
 
   function incoming(text){
