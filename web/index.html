@@ -10018,10 +10018,7 @@ You can manage the client-side memory archive by emitting one fenced code block 
 For edit and delete, use an existing record ID exactly. For add, omit id or choose an unused positive ID. Content is required for add/edit and ignored for delete. Always use the exact memory_operation fence (not a generic json fence), put only valid JSON inside it, and do not describe the operation in a separate code block. The app executes the operation and hides the code block from chat. You may submit one object or an array of operations.`;
   const voiceCallProtocol = `## Voice Call Controls
 The prefix [voice call] on a user message is metadata indicating spoken input. Never repeat or quote [voice call] or [voicecall] in your response. If you choose to end an active voice call, emit [hangup] exactly once; the client will hide it and close the call.`;
-  const hannesStickers = (STICKER_CATALOGUE.hannes || []).map(filename => `[sticker:hannes/${filename}]`).join(", ");
-  const stickerProtocol = `## Stickers
-You may send only Hannes stickers using the exact marker [sticker:hannes/filename]. Available stickers: ${hannesStickers || "none"}. Never use sticker files from kitty/. Sticker markers may accompany text and must be emitted exactly as listed.`;
-  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol + "\n\n" + stickerProtocol;
+  const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol;
   const history = gatewayHistoryMessages();
   return [{ role:"system", content:systemContent }, ...history];
 }
