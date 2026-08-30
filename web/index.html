@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v152">
+<link rel="manifest" href="manifest.webmanifest?build=v153">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -3178,8 +3178,10 @@ const CONFIG = {
   SINCE:        "2025/02/10",
   GATEWAY_URL:  "https://hannes-gateway.chenv354.workers.dev",
   MODEL:        "claude-opus-4-6",
+  TTS_VOICE_ID: "aRV4xzFVdlJMyLB043sO",
 };
 const AI_NAME = CONFIG.AI_NAME, HUMAN_NAME = CONFIG.HUMAN_NAME, APP_NAME = CONFIG.APP_NAME;
+const TTS_VOICE_ID = CONFIG.TTS_VOICE_ID;
 const ASSISTANT_STATUS_KEY = "companion_assistant_status";
 const ASSISTANT_STATUS_TIME_KEY = "companion_assistant_status_time";
 const ASSISTANT_STATUS_TTL = 3 * 60 * 60 * 1000;
@@ -6293,16 +6295,17 @@ function updateVoiceWaveform(waveform, ratio){
   bars.forEach((bar, index) => bar.classList.toggle("played", index < playedCount));
 }
 function cachedMessageTts(cacheKey, voiceText){
+  const cacheSignature = `${TTS_VOICE_ID}\n${voiceText}`;
   const existing = ttsAudioCache.get(cacheKey);
-  if (existing && existing.text === voiceText) return existing.promise;
+  if (existing && existing.text === cacheSignature) return existing.promise;
   if (existing && existing.url) URL.revokeObjectURL(existing.url);
-  const entry = { text:voiceText, url:"", status:"loading", promise:null };
+  const entry = { text:cacheSignature, url:"", status:"loading", promise:null };
   entry.promise = readTtsAudio(cacheKey).then(async persisted => {
-    const blob = persisted && persisted.text === voiceText && persisted.blob instanceof Blob
+    const blob = persisted && persisted.text === cacheSignature && persisted.blob instanceof Blob
       ? persisted.blob
       : await apiTts(voiceText);
-    if (!persisted || persisted.text !== voiceText){
-      try{ await writeTtsAudio(cacheKey, voiceText, blob); }
+    if (!persisted || persisted.text !== cacheSignature){
+      try{ await writeTtsAudio(cacheKey, cacheSignature, blob); }
       catch(error){ console.warn("Persistent TTS cache write failed", error); }
     }
     entry.url = URL.createObjectURL(blob);
@@ -10284,7 +10287,7 @@ async function apiTts(text){
   const response = await fetch(TTS_URL, {
     method:"POST",
     headers:{ ...authHeaders(), "Content-Type":"application/json", "Accept":"audio/mpeg" },
-    body:JSON.stringify({ text:String(text || "") })
+    body:JSON.stringify({ text:String(text || ""), voice_id:TTS_VOICE_ID })
   });
   if (!response.ok){
     const errorText = await response.text().catch(() => "");
@@ -10413,7 +10416,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v152";
+  const SW_BUILD = "v153";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
