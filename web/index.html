@@ -666,17 +666,42 @@
     font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
     color:inherit; opacity:.72;
   }
-  .message-code-copy{
+  .message-code-actions{ display:flex; align-items:center; gap:4px; }
+  .message-code-copy,
+  .message-code-preview{
     appearance:none; border:0; border-radius:7px; padding:5px 8px;
     background:rgba(255,255,255,.24); color:inherit; font:inherit; cursor:pointer;
   }
-  .message-code-copy:active{ transform:scale(.96); }
+  .message-code-preview{ width:28px; height:25px; padding:4px; display:grid; place-items:center; }
+  .message-code-preview svg{ width:16px; height:16px; display:block; }
+  .message-code-copy:active,
+  .message-code-preview:active{ transform:scale(.96); }
   .message-code-body{
     display:block; max-width:100%; margin:0; padding:10px 11px; overflow:auto;
     white-space:pre; overflow-wrap:normal; -webkit-overflow-scrolling:touch;
     font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:.86em; line-height:1.55;
     color:inherit;
   }
+  .html-preview{
+    position:fixed; inset:0; z-index:1200; display:flex; flex-direction:column;
+    padding:max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    background:rgba(17,22,28,.72); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
+  }
+  .html-preview.hidden{ display:none; }
+  .html-preview-shell{
+    flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column;
+    border-radius:18px; background:#fff; box-shadow:0 22px 70px rgba(0,0,0,.28);
+  }
+  .html-preview-head{
+    flex:none; height:46px; padding:0 10px 0 15px; display:flex; align-items:center; justify-content:space-between;
+    color:#263747; background:#f3f1ed; border-bottom:1px solid rgba(38,55,71,.12);
+    font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:11px; letter-spacing:.04em;
+  }
+  .html-preview-close{
+    appearance:none; width:32px; height:32px; border:0; border-radius:50%; display:grid; place-items:center;
+    color:inherit; background:rgba(38,55,71,.08); font-size:22px; line-height:1; cursor:pointer;
+  }
+  .html-preview-frame{ flex:1; width:100%; min-height:0; border:0; background:#fff; }
   .bubble .txt strong{ font-weight: 700; }
   .voice-player{
     display:inline-flex; align-items:center; gap:8px; min-width:210px; max-width:100%;
@@ -3167,6 +3192,16 @@
 <div class="image-viewer" id="imageViewer" aria-hidden="true" role="dialog" aria-label="图片预览">
   <button class="image-viewer-close" id="imageViewerClose" type="button" aria-label="关闭图片预览">×</button>
   <img id="imageViewerImg" alt="图片预览">
+</div>
+
+<div class="html-preview hidden" id="htmlPreview" aria-hidden="true" role="dialog" aria-modal="true" aria-label="HTML preview">
+  <div class="html-preview-shell">
+    <div class="html-preview-head">
+      <span>HTML PREVIEW</span>
+      <button class="html-preview-close" id="htmlPreviewClose" type="button" aria-label="Close HTML preview">×</button>
+    </div>
+    <iframe class="html-preview-frame" id="htmlPreviewFrame" title="HTML preview" sandbox="allow-scripts allow-forms"></iframe>
+  </div>
 </div>
 
 <script>
@@ -6236,7 +6271,11 @@ function renderText(t){
     html += renderInlineText(source.slice(cursor, match.index));
     const language = match[1].trim() || "code";
     const code = match[2].replace(/\r?\n$/, "");
-    html += `<span class="message-code-block"><span class="message-code-head"><span>${escapeHtml(language)}</span><button class="message-code-copy" type="button" aria-label="Copy code">Copy</button></span><pre class="message-code-body">${escapeHtml(code)}</pre></span>`;
+    const normalizedLanguage = language.toLowerCase().replace(/\s.+$/, "");
+    const canPreview = normalizedLanguage === "html" || normalizedLanguage === "htm" ||
+      (normalizedLanguage === "code" && /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(code));
+    const previewButton = canPreview ? `<button class="message-code-preview" type="button" aria-label="Preview HTML" title="Preview HTML"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg></button>` : "";
+    html += `<span class="message-code-block"><span class="message-code-head"><span>${escapeHtml(language)}</span><span class="message-code-actions">${previewButton}<button class="message-code-copy" type="button" aria-label="Copy code">Copy</button></span></span><pre class="message-code-body">${escapeHtml(code)}</pre></span>`;
     cursor = match.index + match[0].length;
     if (!match[3]) break;
   }
@@ -7945,6 +7984,34 @@ scrollEl.addEventListener("click", async (event) => {
       showToast(copied ? "代码已复制" : "复制失败");
     }catch(_fallback){ showToast("复制失败"); }
   }
+});
+
+const htmlPreview = $("#htmlPreview");
+const htmlPreviewFrame = $("#htmlPreviewFrame");
+const htmlPreviewClose = $("#htmlPreviewClose");
+function closeHtmlPreview(){
+  if (!htmlPreview) return;
+  htmlPreview.classList.add("hidden");
+  htmlPreview.setAttribute("aria-hidden", "true");
+  if (htmlPreviewFrame) htmlPreviewFrame.srcdoc = "";
+}
+scrollEl.addEventListener("click", (event) => {
+  const button = event.target.closest(".message-code-preview");
+  if (!button || !scrollEl.contains(button) || !htmlPreviewFrame || !htmlPreview) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const code = button.closest(".message-code-block")?.querySelector(".message-code-body")?.textContent || "";
+  if (!code) return;
+  htmlPreviewFrame.srcdoc = code;
+  htmlPreview.classList.remove("hidden");
+  htmlPreview.setAttribute("aria-hidden", "false");
+});
+if (htmlPreviewClose) htmlPreviewClose.addEventListener("click", closeHtmlPreview);
+if (htmlPreview) htmlPreview.addEventListener("click", event => {
+  if (event.target === htmlPreview) closeHtmlPreview();
+});
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape" && htmlPreview && !htmlPreview.classList.contains("hidden")) closeHtmlPreview();
 });
 (function setupMessageMenu(){
   const menu = $("#msgMenu");
@@ -10415,29 +10482,43 @@ function startRealtime(){ connected = true; setConn("online"); }
 async function init(){
   if (!secret){ showLogin(); return; }
   try{ if (navigator.storage && navigator.storage.persist) void navigator.storage.persist().catch(() => {}); }catch(_){}
-  await loadSessions();
-  loadBrain();
-  let showedCache = false;
-  const cached = await readCachedMessages();
-  if (cached.length){
-    startChat(sessionFiltered(cached).slice(-HISTORY_PAGE_SIZE), { connect:false, fromCache:true });
-    updateConversationSummary(cached);
-    showedCache = true;
-  }
+  /* Let Safari paint the app shell before IndexedDB clones a large archive. */
+  appEl.classList.remove("hidden");
+  loginEl.classList.add("hidden");
+  await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
   try{
-    const msgs = await apiLatestHistory();
-    if (showedCache){
-      hasMoreOlder = true;
-      mergeHistoryMessages(msgs, { stickToBottom:true });
-      startRealtime();
-    }else{
-      startChat(msgs);
+    await loadSessions();
+    loadBrain();
+    const storageStartedAt = performance.now();
+    const cached = await readCachedMessages();
+    const storageElapsed = performance.now() - storageStartedAt;
+    if (storageElapsed > 2000){
+      console.warn("Slow conversation recovery", {
+        messages:cached.length,
+        milliseconds:Math.round(storageElapsed)
+      });
     }
+
+    /* apiLatestHistory() reads the same local archive again. Starting directly
+       from this snapshot avoids cloning/merging the entire history twice. */
+    const latest = sessionFiltered(cached).slice(-HISTORY_PAGE_SIZE);
+    hasMoreOlder = cached.length > latest.length;
+    startChat(latest, { connect:false, fromCache:true });
+    startRealtime();
+
+    /* Give WebKit a frame to render the chat before scanning the full archive
+       for the conversation-list preview/title. */
+    setTimeout(() => updateConversationSummary(cached), 0);
   }catch(err){
-    if (String(err.message) !== "401" && !showedCache) showLogin("连不上,请确认密钥。");
-    else if (showedCache) startRealtime();
+    console.error("Conversation initialization failed", err);
+    /* A damaged/blocked local cache must not leave both screens unusable. */
+    startChat([], { connect:false, fromCache:true });
+    startRealtime();
+    showToast("聊天记录恢复失败；已打开空白会话，请刷新后重试");
+  }finally{
+    applyConversationMode();
   }
-  applyConversationMode();
 }
 
 /* 回前台重同步:iOS 后台会挂起连接 */
@@ -10543,7 +10624,12 @@ if ("serviceWorker" in navigator){
   });
 }
 
-init();
+init().catch(err => {
+  console.error("Fatal initialization error", err);
+  appEl.classList.remove("hidden");
+  loginEl.classList.add("hidden");
+  showToast("页面初始化失败，请刷新后重试");
+});
 </script>
 
 </body>
