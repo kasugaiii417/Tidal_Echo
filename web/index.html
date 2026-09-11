@@ -6242,7 +6242,7 @@ bottomSpacer.className = "v-spacer";
 
 function tsMs(m){ return new Date(m.ts).getTime(); }
 
-const TZ = "Asia/Shanghai";  // pin all timestamps to Beijing time, independent of device TZ
+const TZ = "America/Los_Angeles";  // pin all timestamps to Los Angeles time, independent of device TZ
 function fmtTime(ts){
   return new Date(ts).toLocaleTimeString("zh-CN", { hour:"2-digit", minute:"2-digit", hour12:false, timeZone:TZ });
 }
