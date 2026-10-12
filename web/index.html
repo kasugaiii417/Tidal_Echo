@@ -9119,10 +9119,13 @@ async function importMemoryBackup(file){
   showToast("Memory backup imported");
 }
 function nextMemoryId(rows = loadMemories()){
-  const used = new Set(rows.map(row => row.id));
-  let id = 1;
+  const used = new Set(rows.map(row => Number(row && row.id)));
+  let id = rows.length + 1;
   while (used.has(id)) id++;
   return id;
+}
+function compactMemoryIds(rows){
+  return rows.slice().sort((a, b) => a.id - b.id).map((row, index) => ({ ...row, id:index + 1 }));
 }
 function renderMemoryList(){
   if (!memoryList) return;
@@ -9146,7 +9149,7 @@ function renderMemoryPage(){
   if (memoryNewEditor) memoryNewEditor.classList.remove("open");
   renderMemoryList();
 }
-function applyMemoryOperation(operation, { notify = true } = {}){
+function applyMemoryOperation(operation, { notify = true, compactDelete = true } = {}){
   if (!operation || typeof operation !== "object") return false;
   let action = String(operation.action || "").toLowerCase();
   if (action === "update") action = "edit";
@@ -9165,7 +9168,11 @@ function applyMemoryOperation(operation, { notify = true } = {}){
   }else if (action === "delete" && hasValidId){
     const next = rows.filter(item => item.id !== requestedId);
     changed = next.length !== rows.length;
-    rows = next;
+    rows = changed && compactDelete ? compactMemoryIds(next) : next;
+    if (changed && compactDelete){
+      editingMemoryId = null;
+      expandedMemoryIds.clear();
+    }
   }
   if (!changed) return false;
   saveMemories(rows);
@@ -9239,11 +9246,25 @@ function interceptMemoryOperations(text){
       return "";
     }
     found = true;
+    let deletedMemory = false;
     operations.forEach(operation => {
-      const succeeded = applyMemoryOperation(operation, { notify:false });
-      renderMemoryOperation(operation, succeeded);
+      let effectiveOperation = operation;
+      if (String(operation.action || "").toLowerCase() === "add"){
+        const requestedId = Number(operation.id);
+        const rows = loadMemories();
+        const validUnusedId = Number.isInteger(requestedId) && requestedId > 0 && !rows.some(row => row.id === requestedId);
+        effectiveOperation = { ...operation, id:validUnusedId ? requestedId : nextMemoryId(rows) };
+      }
+      const succeeded = applyMemoryOperation(effectiveOperation, { notify:false, compactDelete:false });
+      renderMemoryOperation(effectiveOperation, succeeded);
       if (succeeded) updated = true;
+      if (succeeded && String(effectiveOperation.action || "").toLowerCase() === "delete") deletedMemory = true;
     });
+    if (deletedMemory){
+      saveMemories(compactMemoryIds(loadMemories()));
+      expandedMemoryIds.clear();
+      if (memoryPanel && memoryPanel.classList.contains("open")) renderMemoryList();
+    }
     return "";
   }).trim();
   if (updated) showToast("Memory updated");
@@ -10029,7 +10050,7 @@ For delete:
 \`\`\`memory_operation
 {"action":"delete","id":1}
 \`\`\`
-For add, omit id so the app assigns one automatically. For edit and delete, use an existing record ID exactly. Content is required for add/edit and ignored for delete. The example text above describes the format only; replace it with the actual memory and never copy it as a real memory. Put only valid JSON inside the exact memory_operation fence (not a generic json fence); do not add comments, prose, or another code block inside it. The app executes the operation and hides the code block from chat. You may submit one object or an array of operations.`;
+For add, normally omit id so the app assigns count + 1 (skipping an occupied number). Use an explicit unused positive id only when the user specifically requests that number. For edit and delete, use an existing record ID exactly. Content is required for add/edit and ignored for delete. The example text above describes the format only; replace it with the actual memory and never copy it as a real memory. Put only valid JSON inside the exact memory_operation fence (not a generic json fence); do not add comments, prose, or another code block inside it. The app executes the operation and hides the code block from chat. You may submit one object or an array of operations.`;
   const voiceCallProtocol = `## Voice Call Controls
 The prefix [voice call] on a user message is metadata indicating spoken input. Never repeat or quote [voice call] or [voicecall] in your response. If you choose to end an active voice call, emit [hangup] exactly once; the client will hide it and close the call.`;
   const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol;
