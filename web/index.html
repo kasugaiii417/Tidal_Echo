@@ -6140,10 +6140,16 @@ function extractAssistantStatus(raw){
   const visibleText = raw.text.replace(tagPattern, "").trim();
   return { ...raw, text:visibleText, _statusOnly:!visibleText };
 }
+function assistantVoiceText(text){
+  const match = /^\s*\[voice\]\s*([\s\S]*)$/i.exec(String(text || ""));
+  return match ? match[1].trim() : null;
+}
 function assistantDisplayText(message){
   const text = String(message && message.text || "");
   if (!message || message.from !== "ai") return text;
-  return stripVoiceCallControlMarkers(text.replace(/«status:\s*(.+?)»/g, "").replace(/«status:[^»]*$/g, ""));
+  const cleaned = stripVoiceCallControlMarkers(text.replace(/«status:\s*(.+?)»/g, "").replace(/«status:[^»]*$/g, ""));
+  const voiceText = assistantVoiceText(cleaned);
+  return voiceText === null ? cleaned : voiceText;
 }
 scheduleAssistantStatusExpiry();
 function setConn(state){
@@ -6329,86 +6335,16 @@ function hideIncompleteStickerWhileStreaming(text){
     ? source.slice(0, openAt)
     : source;
 }
-function assistantCodeFenceRanges(text){
-  const source = String(text || "");
-  const ranges = [];
-  const fence = /```([^\r\n`]*)\r?\n?([\s\S]*?)(```|$)/g;
-  let match;
-  while ((match = fence.exec(source))){
-    ranges.push({ start:match.index, end:match.index + match[0].length });
-    if (!match[3]) break;
-  }
-  return ranges;
-}
-function codeFenceEndAt(ranges, index){
-  for (const range of ranges){
-    if (index < range.start) return -1;
-    if (index < range.end) return range.end;
-  }
-  return -1;
-}
-function parseAssistantVoiceSegments(text){
-  const source = String(text || "");
-  const segments = [];
-  const codeRanges = assistantCodeFenceRanges(source);
-  let index = 0;
-  while (index < source.length){
-    const codeEnd = codeFenceEndAt(codeRanges, index);
-    if (codeEnd >= 0){ index = codeEnd; continue; }
-    if (source[index] !== "*" || source[index - 1] === "*" || source[index + 1] === "*" || source[index - 1] === "\\"){
-      index++;
-      continue;
-    }
-    let close = index + 1;
-    while (close < source.length){
-      const closeCodeEnd = codeFenceEndAt(codeRanges, close);
-      if (closeCodeEnd >= 0){ close = closeCodeEnd; continue; }
-      if (source[close] === "*" && source[close - 1] !== "*" && source[close + 1] !== "*" && source[close - 1] !== "\\") break;
-      close++;
-    }
-    if (close >= source.length) break;
-    const content = source.slice(index + 1, close).trim();
-    if (content) segments.push({ start:index, end:close + 1, content });
-    index = close + 1;
-  }
-  return segments;
-}
 function hideAssistantVoiceWhileStreaming(text){
   const source = String(text || "");
-  const codeRanges = assistantCodeFenceRanges(source);
-  let visible = "";
-  let insideVoice = false;
-  for (let index = 0; index < source.length; index++){
-    const codeEnd = codeFenceEndAt(codeRanges, index);
-    if (codeEnd >= 0){
-      visible += source.slice(index, codeEnd);
-      index = codeEnd - 1;
-      continue;
-    }
-    const isMarker = source[index] === "*"
-      && source[index - 1] !== "*"
-      && source[index + 1] !== "*"
-      && source[index - 1] !== "\\";
-    if (isMarker){
-      insideVoice = !insideVoice;
-      continue;
-    }
-    if (!insideVoice) visible += source[index];
-  }
-  return visible;
+  const leading = source.match(/^\s*/)[0];
+  const content = source.slice(leading.length);
+  if (/^\[voice\]/i.test(content)) return content.replace(/^\[voice\]\s*/i, "");
+  if (/^\[(?:v(?:o(?:i(?:c(?:e)?)?)?)?)?$/i.test(content)) return "";
+  return source;
 }
-function voiceMessageHtml(text, segments){
-  let html = "";
-  let cursor = 0;
-  segments.forEach((segment, index) => {
-    html += renderText(String(text).slice(cursor, segment.start));
-    if (index === 0){
-      html += `<span class="voice-player loading"><button class="voice-play" type="button" aria-label="播放语音" disabled></button><span class="voice-waveform" aria-label="语音播放进度"></span><span class="voice-duration"><span class="voice-loading" aria-label="语音加载中"><i></i><i></i><i></i></span></span></span>`;
-    }
-    cursor = segment.end;
-  });
-  html += renderText(String(text).slice(cursor));
-  return html;
+function voiceMessageHtml(){
+  return `<span class="voice-player loading"><button class="voice-play" type="button" aria-label="播放语音" disabled></button><span class="voice-waveform" aria-label="语音播放进度"></span><span class="voice-duration"><span class="voice-loading" aria-label="语音加载中"><i></i><i></i><i></i></span></span></span>`;
 }
 function formatAudioDuration(seconds){
   if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
@@ -6844,7 +6780,7 @@ function removeMessage(key, { render = true, cache = true, journal = cache } = {
   messageByKey.delete(k);
   chatMessages = chatMessages.filter((x) => x !== m);
   messageOrderVersion++;
-  if (m.from === "ai" && parseAssistantVoiceSegments(m.text).length){
+  if (m.from === "ai" && assistantVoiceText(stripVoiceCallControlMarkers(m.text)) !== null){
     const audioKey = `${activeConversationId}:${k}`;
     const entry = ttsAudioCache.get(audioKey);
     if (entry && entry.url) try{ URL.revokeObjectURL(entry.url); }catch(_){}
@@ -7407,8 +7343,10 @@ function makeMessage(rowData){
     : "";
   let _inner = voiceIcon;
   if (atts.length) _inner += renderAttachments(atts);
-  const voiceSegments = m.from === "ai" && m.status !== "streaming" ? parseAssistantVoiceSegments(displayText) : [];
-  if (displayText) _inner += lyricShareHtml(lyricShare) || stickerHtml || `<span class="txt">${voiceSegments.length ? voiceMessageHtml(displayText, voiceSegments) : renderText(displayText)}</span>`;
+  const voiceText = m.from === "ai" && m.status !== "streaming" ? assistantVoiceText(stripVoiceCallControlMarkers(m.text)) : null;
+  if (displayText || voiceText !== null) _inner += voiceText !== null
+    ? `<span class="txt">${voiceMessageHtml()}</span>`
+    : lyricShareHtml(lyricShare) || stickerHtml || `<span class="txt">${renderText(displayText)}</span>`;
   if (m.meta && m.meta.keepalive) _inner += keepaliveToolsHtml(m);
   _inner += `<span class="meta"></span>`;
   bubble.innerHTML = _inner;
@@ -7433,9 +7371,8 @@ function makeMessage(rowData){
     row.appendChild(tag);
     bubble.querySelectorAll(".keepalive-tools").forEach(details => details.addEventListener("toggle", () => measureVisibleRows({ stickToBottom:nearBottom() })));
   }
-  if (voiceSegments.length){
-    const joinedVoiceText = voiceSegments.map(segment => segment.content).join(" ");
-    setupVoicePlayer(bubble.querySelector(".voice-player"), m, joinedVoiceText);
+  if (voiceText !== null){
+    setupVoicePlayer(bubble.querySelector(".voice-player"), m, voiceText);
   }
   const storedUsageTokens = m.meta && m.meta.usage_tokens;
   const displayedTokens = storedUsageTokens != null ? Number(storedUsageTokens) : Number(m.meta && m.meta.output_tokens);
@@ -7923,7 +7860,7 @@ function onMessage(m){
   if (m.from === "ai" && m.kind !== "thinking" && m.kind !== "act"){               // act 是环境信息:不响铃、不在通话里朗读
     playReceiveSound();
     if (window.VoiceCall && window.VoiceCall.isOpen()){
-      window.VoiceCall.speak(m.text || "");
+      window.VoiceCall.speak(assistantDisplayText(m));
       if (remoteHangupAfterMessage) window.VoiceCall.remoteHangup();
     }
   }
@@ -9339,7 +9276,9 @@ function stripVoiceCallControlMarkers(text){
     .trim();
 }
 function splitAssistantBubbleText(value){
-  const lines = String(value || "").replace(/\r\n/g, "\n").split("\n");
+  const source = String(value || "").replace(/\r\n/g, "\n");
+  if (assistantVoiceText(source) !== null) return [source.trim()].filter(Boolean);
+  const lines = source.split("\n");
   const chunks = [];
   let current = [];
   let fence = "";
@@ -10012,7 +9951,7 @@ function gatewayContentForMessage(m, includeTimestamp = false){
   const atts = (m.meta && Array.isArray(m.meta.attachments)) ? m.meta.attachments : [];
   const voicePrefix = m.from === "human" && (m.voice || (m.meta && m.meta.voice)) ? "[voice call] " : "";
   const prefix = voicePrefix + (includeTimestamp ? `${gatewayLocalTime(m.ts)} ` : "");
-  let messageText = m.from === "ai" ? stripVoiceCallControlMarkers(m.text) : (m.text || "");
+  let messageText = m.from === "ai" ? assistantDisplayText(m) : (m.text || "");
   if (m.from === "ai" && m.meta && m.meta.keepalive){
     messageText = `[keepalive message]${messageText ? `\n${messageText}` : ""}`;
     const calls = keepaliveToolCalls(m);
