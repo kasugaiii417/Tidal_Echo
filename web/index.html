@@ -10017,11 +10017,19 @@ function gatewayConversation(){
   const memories = loadMemories();
   const memoryXml = memories.map(m => `<record><id>${m.id}</id><content>${m.content}</content></record>`).join("\n");
   const memoryProtocol = `## Memory Operations
-You can manage the client-side memory archive by emitting one fenced code block tagged memory_operation:
+You can manage the client-side memory archive by emitting exactly one fenced code block tagged memory_operation. Use valid JSON, matching one of these forms:
 \`\`\`memory_operation
-{"action":"add"|"edit"|"delete","id":number,"content":"text"}
+{"action":"add","content":"A concise memory from the conversation."}
 \`\`\`
-For edit and delete, use an existing record ID exactly. For add, omit id or choose an unused positive ID. Content is required for add/edit and ignored for delete. Always use the exact memory_operation fence (not a generic json fence), put only valid JSON inside it, and do not describe the operation in a separate code block. The app executes the operation and hides the code block from chat. You may submit one object or an array of operations.`;
+For edit:
+\`\`\`memory_operation
+{"action":"edit","id":1,"content":"The updated memory text."}
+\`\`\`
+For delete:
+\`\`\`memory_operation
+{"action":"delete","id":1}
+\`\`\`
+For add, omit id so the app assigns one automatically. For edit and delete, use an existing record ID exactly. Content is required for add/edit and ignored for delete. The example text above describes the format only; replace it with the actual memory and never copy it as a real memory. Put only valid JSON inside the exact memory_operation fence (not a generic json fence); do not add comments, prose, or another code block inside it. The app executes the operation and hides the code block from chat. You may submit one object or an array of operations.`;
   const voiceCallProtocol = `## Voice Call Controls
 The prefix [voice call] on a user message is metadata indicating spoken input. Never repeat or quote [voice call] or [voicecall] in your response. If you choose to end an active voice call, emit [hangup] exactly once; the client will hide it and close the call.`;
   const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol;
