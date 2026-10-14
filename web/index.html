@@ -99,8 +99,6 @@
     --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
     /* composer 占据的底部区域(含安全区/键盘):scroll 底 padding 与边缘渐隐共用同一来源,保持对齐 */
     --composer-zone: calc(var(--composer-h) + 16px + env(safe-area-inset-bottom) + var(--ios-pwa-bottom-bleed) + var(--keyboard-offset));
-    --edge-fade-top: clamp(24px, 5vw, 52px);
-    --edge-fade-tail: clamp(16px, 3vw, 30px);
     /* profile / settings — frosted glass, blends into the wallpaper */
     --card-bg: rgba(244,248,250,.42);
     --card-line: rgba(150,168,182,.12);
@@ -202,9 +200,6 @@
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
   }
-  .wall::after{
-    content:""; position:absolute; inset:0; background: var(--scrim); pointer-events:none;
-  }
   .wall::before{
     content:""; position:absolute; inset:0;
     background-image:var(--custom-wall-image); background-size:cover; background-position:center;
@@ -247,6 +242,13 @@
   }
   .peerpill .status.dynamic-status{ font-size:clamp(11px, 1.6vw, 14px); }
   .peerpill .status .status-cn{ font-size:.92em; }
+  :root.dark-wall-header .app .peerpill .name,
+  :root.dark-wall-header .app .peerpill .status,
+  :root.dark-wall-header .app[data-conn="reconnecting"] .peerpill .status,
+  :root.dark-wall-header .app .peerpill .status.typing{
+    color:#fff;
+    text-shadow:0 1px 12px rgba(0,0,0,.62);
+  }
   .peerpill .status.available{ display:inline-flex; align-items:center; gap:6px; }
   .peerpill .status.available::before{
     content:""; width:6px; height:6px; flex:none; border-radius:50%;
@@ -478,10 +480,6 @@
     padding: clamp(14px, 2.4vw, 28px) var(--side-pad) calc(var(--composer-zone) + var(--message-bottom-gap));
     display: flex; flex-direction: column;
     transition: padding-bottom .28s cubic-bezier(.2,.8,.2,1);
-    /* 边缘渐隐:顶部一段、底部对齐 composer 上沿一段,消息滚到边缘自然淡出 */
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--edge-fade-top), #000 calc(100% - var(--composer-zone)), transparent calc(100% - var(--composer-zone) + var(--edge-fade-tail)));
-    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--edge-fade-top), #000 calc(100% - var(--composer-zone)), transparent calc(100% - var(--composer-zone) + var(--edge-fade-tail)));
-    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
   }
   .scroll::-webkit-scrollbar{ width:0; height:0; }
   .v-spacer{
@@ -3504,6 +3502,18 @@ function rgbParts(color){
   const match = String(color || "").match(/[\d.]+/g);
   return match && match.length >= 3 ? match.slice(0,3).map(Number) : null;
 }
+function colorLuminance(color){
+  const parts = rgbParts(color);
+  if (!parts) return 1;
+  const linear = parts.map(value => {
+    const channel = Math.max(0,Math.min(255,value)) / 255;
+    return channel <= .04045 ? channel / 12.92 : Math.pow((channel + .055) / 1.055, 2.4);
+  });
+  return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
+}
+function syncHeaderContrast(color){
+  document.documentElement.classList.toggle("dark-wall-header", colorLuminance(color) < .18);
+}
 function blendColors(base, overlay, opacity){
   const a = rgbParts(base), b = rgbParts(overlay);
   if (!a) return overlay || base;
@@ -3538,6 +3548,7 @@ function syncAdaptiveWallpaperColors(){
   const opacity = customWallUrl ? customWallOpacityValue() / 100 : 0;
   const topColor = customWallTopColor ? blendColors(baseWallTopColor, customWallTopColor, opacity) : baseWallTopColor;
   const seamColor = customWallSeamColor ? blendColors(baseWallSeamColor, customWallSeamColor, opacity) : baseWallSeamColor;
+  syncHeaderContrast(topColor);
   chromeSurfaces.chat = { top:topColor, tail:seamColor };
   // The light call sheet uses the preset wallpaper (not the custom overlay), so
   // its iOS-owned bottom strip must follow the preset's sampled final pixels.
@@ -3617,6 +3628,9 @@ function applyCustomWall(url, opacity = 100){
     syncAdaptiveWallpaperColors();
     return;
   }
+  customWallTopColor = "";
+  customWallSeamColor = "";
+  syncAdaptiveWallpaperColors();
   const requestedUrl = customWallUrl;
   const image = new Image();
   image.onload = () => {
