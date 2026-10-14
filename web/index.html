@@ -501,6 +501,8 @@
   }
 
   .row{ display:flex; position:relative; margin-top: clamp(14px, 2.2vw, 28px); }
+  .row.conversation-search-hit .bubble{ animation:conversationSearchHit 1.7s ease both; }
+  @keyframes conversationSearchHit{ 0%,100%{ box-shadow:var(--shadow); } 24%,68%{ box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 45%,transparent),var(--shadow); } }
   .day + .row{ margin-top: clamp(12px, 1.8vw, 20px); }
   .new-divider{
     display:flex;
@@ -1877,18 +1879,48 @@
   }
   .conversation-page::before{ content:""; position:absolute; inset:0; background:var(--scrim); pointer-events:none; }
   .conversation-head{
-    position:relative; z-index:1; display:grid; grid-template-columns:44px 1fr auto auto auto;
+    position:relative; z-index:1; display:grid; grid-template-columns:44px minmax(0,1fr) repeat(4,40px);
     align-items:center; gap:8px;
     padding:calc(env(safe-area-inset-top) + 12px) var(--side-pad) 12px;
     border-bottom:1px solid var(--hairline);
     background:color-mix(in srgb, var(--bg) 72%, transparent);
     -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
   }
-  .conversation-back,.conversation-add,.conversation-import,.conversation-export{
+  .conversation-back,.conversation-add,.conversation-import,.conversation-export,.conversation-search-trigger{
     border:0; color:var(--text-soft); background:transparent; cursor:pointer;
     width:40px; height:40px; border-radius:50%; display:grid; place-items:center; font:inherit;
   }
-  .conversation-back svg,.conversation-add svg,.conversation-import svg,.conversation-export svg{ width:22px; height:22px; }
+  .conversation-back svg,.conversation-add svg,.conversation-import svg,.conversation-export svg,.conversation-search-trigger svg{ width:22px; height:22px; }
+  .conversation-search{
+    position:absolute; inset:0; z-index:4; display:none; flex-direction:column;
+    color:var(--text); background:var(--bg); background-image:var(--menu-wall-default);
+    background-size:cover; background-position:center;
+  }
+  .conversation-search.open{ display:flex; }
+  .conversation-search::before{ content:""; position:absolute; inset:0; background:var(--scrim); pointer-events:none; }
+  .conversation-search-head{
+    position:relative; z-index:1; display:grid; grid-template-columns:44px minmax(0,1fr);
+    align-items:center; gap:8px; padding:calc(env(safe-area-inset-top) + 12px) var(--side-pad) 12px;
+    border-bottom:1px solid var(--hairline); background:color-mix(in srgb, var(--bg) 72%, transparent);
+    -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  }
+  .conversation-search-title{ margin:0; font-family:var(--font-en),var(--font-cn); font-size:clamp(20px,5.5vw,27px); font-weight:500; }
+  .conversation-search-back{ width:40px; height:40px; border:0; border-radius:50%; display:grid; place-items:center; color:var(--text-soft); background:transparent; cursor:pointer; }
+  .conversation-search-back svg{ width:22px; height:22px; }
+  .conversation-search-controls{ position:relative; z-index:1; display:grid; gap:10px; padding:14px var(--side-pad) 8px; }
+  .conversation-search-window,.conversation-search-input{
+    width:100%; min-height:44px; border:1px solid var(--field-line); border-radius:14px;
+    padding:9px 13px; color:var(--text); background:var(--field-bg); font:inherit; outline:none;
+  }
+  .conversation-search-window:focus,.conversation-search-input:focus{ border-color:var(--accent); }
+  .conversation-search-status{ position:relative; z-index:1; min-height:28px; padding:3px var(--side-pad) 7px; color:var(--text-faint); font-size:12px; }
+  .conversation-search-results{ position:relative; z-index:1; flex:1 1 auto; overflow-y:auto; padding:0 var(--side-pad) calc(env(safe-area-inset-bottom) + 28px); }
+  .conversation-search-results::-webkit-scrollbar{ width:0; }
+  .conversation-search-result{ width:100%; display:block; padding:13px 2px; border:0; border-bottom:1px solid var(--hairline); color:var(--text); background:transparent; text-align:left; font:inherit; cursor:pointer; }
+  .conversation-search-result:active{ background:var(--row-press); }
+  .conversation-search-result-meta{ display:flex; justify-content:space-between; gap:10px; margin-bottom:5px; color:var(--text-faint); font-size:11px; }
+  .conversation-search-result-text{ display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3; color:var(--text-soft); font-size:13px; line-height:1.55; overflow-wrap:anywhere; }
+  .conversation-search-result-text mark{ color:var(--text); background:color-mix(in srgb,var(--accent) 20%,transparent); border-radius:3px; }
   .conversation-title{ margin:0; font-family:var(--font-en),var(--font-cn); font-size:clamp(22px,6vw,30px); font-weight:500; }
   .conversation-list{
     position:relative; z-index:1; flex:1 1 auto; overflow-y:auto;
@@ -2589,6 +2621,25 @@
   .msg-act:active{ background:var(--row-press); transform:scale(.98); }
   .msg-act svg{ width:18px; height:18px; opacity:.82; flex:0 0 auto; }
   .msg-act.danger{ color:#e05a4d; }                       /* 删除(仅本地) */
+  .msg-act[data-act="select"]{ color:var(--accent); }
+  .row.message-selected .bubble{ outline:2px solid var(--accent); outline-offset:2px; }
+  .message-select-check{
+    position:absolute; z-index:3; top:-5px; width:22px; height:22px; border-radius:50%;
+    display:grid; place-items:center; color:#fff; background:var(--accent); border:2px solid var(--composer-bg);
+    font:600 13px/1 system-ui; box-shadow:0 2px 8px rgba(0,0,0,.2); pointer-events:none;
+  }
+  .row.ai .message-select-check{ left:calc(var(--avatar-size) + 8px); }
+  .row.human .message-select-check{ right:calc(var(--avatar-size) + 8px); }
+  .message-select-bar{
+    position:fixed; z-index:180; left:50%; bottom:calc(var(--composer-zone) - 2px); transform:translate(-50%, 140%);
+    display:flex; align-items:center; gap:8px; padding:9px 12px; border:1px solid var(--hairline); border-radius:18px;
+    background:var(--composer-bg); box-shadow:var(--shadow); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px);
+    opacity:0; pointer-events:none; transition:transform .22s var(--ease-soft),opacity .18s ease;
+  }
+  .message-select-bar.open{ transform:translate(-50%,0); opacity:1; pointer-events:auto; }
+  .message-select-count{ min-width:56px; color:var(--text-muted); font-size:13px; white-space:nowrap; }
+  .message-select-bar button{ border:0; border-radius:12px; background:var(--row-press); color:var(--text); padding:9px 12px; font:inherit; white-space:nowrap; }
+  .message-select-bar button.danger{ color:#e05a4d; }
 
   /* In-app image viewer. Attachment links used to open their authenticated
      upload URL in Safari, which loses the already-loaded local blob preview. */
@@ -2725,6 +2776,12 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M6.5 10.5L12 5l5.5 5.5"/></svg>
     </button>
   </footer>
+  <div class="message-select-bar" id="messageSelectBar" role="toolbar" aria-label="批量消息操作">
+    <span class="message-select-count" id="messageSelectCount">已选 0 条</span>
+    <button type="button" data-selection-act="copy">Copy</button>
+    <button type="button" class="danger" data-selection-act="delete">Delete</button>
+    <button type="button" data-selection-act="cancel">取消</button>
+  </div>
   <section class="sticker-picker" id="stickerPicker" aria-label="Sticker picker" aria-hidden="true">
     <div class="sticker-picker-title">Kitty stickers</div>
     <div class="sticker-grid" id="stickerGrid"></div>
@@ -3025,6 +3082,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
       <h2 class="conversation-title">Conversations</h2>
+      <button class="conversation-search-trigger" id="conversationSearchOpen" type="button" aria-label="搜索聊天记录" title="搜索聊天记录">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.2 4.2"/></svg>
+      </button>
       <button class="conversation-export" id="conversationExport" type="button" aria-label="导出聊天记录" title="导出 JSON">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 20h14"/></svg>
       </button>
@@ -3036,6 +3096,20 @@
       </button>
     </header>
     <div class="conversation-list" id="conversationList"></div>
+    <section class="conversation-search" id="conversationSearch" aria-label="搜索聊天记录" aria-hidden="true">
+      <header class="conversation-search-head">
+        <button class="conversation-search-back" id="conversationSearchBack" type="button" aria-label="关闭搜索">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <h2 class="conversation-search-title">Search messages</h2>
+      </header>
+      <div class="conversation-search-controls">
+        <select class="conversation-search-window" id="conversationSearchWindow" aria-label="选择要搜索的聊天窗口"></select>
+        <input class="conversation-search-input" id="conversationSearchInput" type="search" placeholder="输入关键词" autocomplete="off" enterkeyhint="search">
+      </div>
+      <div class="conversation-search-status" id="conversationSearchStatus" aria-live="polite"></div>
+      <div class="conversation-search-results" id="conversationSearchResults"></div>
+    </section>
     <input class="hidden" id="conversationImportInput" type="file" accept="application/json,.json">
     <section class="import-picker" id="importPicker" aria-label="选择要导入的对话">
       <header class="import-picker-head">
@@ -3179,6 +3253,10 @@
     <button class="msg-act" type="button" data-act="copy" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
       <span>Copy</span>
+    </button>
+    <button class="msg-act" type="button" data-act="select" role="menuitem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 2.5 2.5L16 9"/></svg>
+      <span>Select</span>
     </button>
     <button class="msg-act danger" type="button" data-act="delete" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
@@ -3437,6 +3515,10 @@ const terminalBtn = $("#terminalBtn"), terminalPanel = $("#terminalPanel"), term
 const brainSeg = $("#brainSeg"), brainHint = $("#brainHint");
 const conversationPanel = $("#conversationPanel"), conversationList = $("#conversationList");
 const conversationBack = $("#conversationBack"), conversationAdd = $("#conversationAdd");
+const conversationSearchOpen = $("#conversationSearchOpen"), conversationSearch = $("#conversationSearch");
+const conversationSearchBack = $("#conversationSearchBack"), conversationSearchWindow = $("#conversationSearchWindow");
+const conversationSearchInput = $("#conversationSearchInput"), conversationSearchStatus = $("#conversationSearchStatus");
+const conversationSearchResults = $("#conversationSearchResults");
 const conversationImport = $("#conversationImport"), conversationImportInput = $("#conversationImportInput"), conversationExport = $("#conversationExport");
 const importPicker = $("#importPicker"), importPickerBack = $("#importPickerBack"), importPickerConfirm = $("#importPickerConfirm");
 const importPickerSummary = $("#importPickerSummary"), importPickerList = $("#importPickerList"), importMessageLimit = $("#importMessageLimit");
@@ -3789,6 +3871,7 @@ function openConversationList(){
 }
 function closeConversationList(){
   if (!conversationPanel) return;
+  closeConversationSearch();
   closeImportPicker();
   closeExportPicker();
   conversationPanel.classList.remove("open");
@@ -6226,6 +6309,8 @@ let activeConversationId = (() => {
 })();
 let chatMessages = [];
 let messageByKey = new Map();
+let messageSelectionActive = false;
+let selectedMessageKeys = new Set();
 let messageOrderVersion = 0, sortedMessageVersion = -1, sortedMessageCache = [];
 let virtualRows = [];
 let rowHeights = new Map();
@@ -7397,6 +7482,13 @@ function makeMessage(rowData){
     });
   }else if (metaEl && !stickerHtml && !(m.meta && m.meta.keepalive)) fillMeta(metaEl, m.ts, m.from === "human");
   row.appendChild(bubble);
+  if (messageSelectionActive && selectedMessageKeys.has(msgKey(m._key))){
+    row.classList.add("message-selected");
+    const check = document.createElement("span");
+    check.className = "message-select-check";
+    check.textContent = "✓";
+    row.appendChild(check);
+  }
   if (m.meta && m.meta.keepalive){
     const tag = document.createElement("div");
     tag.className = "keepalive-tag";
@@ -7988,6 +8080,8 @@ window.addEventListener("keydown", event => {
   if (!menu) return;
   const scrim = $("#msgMenuScrim");
   const actions = $("#msgMenuActions");
+  const selectBar = $("#messageSelectBar");
+  const selectCount = $("#messageSelectCount");
   let cloneEl = null, pressTimer = null, pressBubble = null, openKey = null, openAttachmentIndex = null;
   let pressAttachmentIndex = null;
   let startX = 0, startY = 0;
@@ -8001,18 +8095,53 @@ window.addEventListener("keydown", event => {
     if (!rowEl) return null;
     const msg = messageByKey.get(msgKey(rowEl.dataset.messageKey));
     if (!msg) return null;
-    return { key: rowEl.dataset.messageKey, msg, side: rowEl.classList.contains("human") ? "human" : "ai" };
+    return { key: rowEl.dataset.messageKey, msg, row:rowEl, side: rowEl.classList.contains("human") ? "human" : "ai" };
   }
+
+  function refreshSelection(){
+    const app = $("#app");
+    if (app) app.classList.toggle("message-selecting", messageSelectionActive);
+    if (selectBar) selectBar.classList.toggle("open", messageSelectionActive);
+    if (selectCount) selectCount.textContent = `已选 ${selectedMessageKeys.size} 条`;
+    scrollEl.querySelectorAll("[data-message-key]").forEach(row => {
+      const selected = messageSelectionActive && selectedMessageKeys.has(msgKey(row.dataset.messageKey));
+      row.classList.toggle("message-selected", selected);
+      let check = row.querySelector(".message-select-check");
+      if (selected && !check){ check = document.createElement("span"); check.className = "message-select-check"; check.textContent = "✓"; row.appendChild(check); }
+      else if (!selected && check) check.remove();
+    });
+  }
+  function toggleSelected(key){
+    const normalized = msgKey(key);
+    if (selectedMessageKeys.has(normalized)) selectedMessageKeys.delete(normalized);
+    else if (messageByKey.has(normalized)) selectedMessageKeys.add(normalized);
+    refreshSelection();
+  }
+  function startSelection(key){
+    messageSelectionActive = true;
+    selectedMessageKeys.clear();
+    if (key != null && messageByKey.has(msgKey(key))) selectedMessageKeys.add(msgKey(key));
+    refreshSelection();
+  }
+  function stopSelection(){
+    messageSelectionActive = false;
+    selectedMessageKeys.clear();
+    refreshSelection();
+  }
+  window.clearMessageSelection = stopSelection;
 
   function open(bubble, attachmentIndex = null){
     if (isOpen()) return;
     const info = bubbleInfo(bubble);
     if (!info) return;
+    if (messageSelectionActive && attachmentIndex == null){ toggleSelected(info.key); return; }
     try{ const ae = document.activeElement; if (ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) ae.blur(); }catch(_){}  // 聚焦的输入框长按时会弹自己的原生菜单 → 先失焦
     openKey = info.key;
     openAttachmentIndex = Number.isInteger(attachmentIndex) ? attachmentIndex : null;
     const copyBtn = actions.querySelector('[data-act="copy"]');
     if (copyBtn) copyBtn.style.display = openAttachmentIndex == null && info.msg.text ? "" : "none";
+    const selectBtn = actions.querySelector('[data-act="select"]');
+    if (selectBtn) selectBtn.style.display = openAttachmentIndex == null ? "" : "none";
     const deleteLabel = actions.querySelector('[data-act="delete"] span');
     if (deleteLabel) deleteLabel.textContent = openAttachmentIndex == null ? "Delete" : "Delete image";
     const r = bubble.getBoundingClientRect();
@@ -8076,6 +8205,7 @@ window.addEventListener("keydown", event => {
     const msg = key != null ? messageByKey.get(msgKey(key)) : null;
     close();
     if (key == null) return;
+    if (!window.confirm(attachmentIndex != null ? "确定删除这张图片吗？" : "确定删除这条消息吗？")) return;
     if (attachmentIndex != null && msg){
       const attachments = (msg.meta && Array.isArray(msg.meta.attachments)) ? msg.meta.attachments.slice() : [];
       const removed = attachments.splice(attachmentIndex, 1)[0];
@@ -8097,6 +8227,33 @@ window.addEventListener("keydown", event => {
     persistDeletedKeys();
     removeMessage(key);                        // 从内存 + IndexedDB 缓存移除并重渲
     showToast("已删除");
+  }
+
+  function copySelected(){
+    const selected = sortedMessages().filter(m => selectedMessageKeys.has(msgKey(m._key)));
+    const text = selected.map(m => {
+      const body = assistantDisplayText(m) || "";
+      const sender = m.from === "human" ? HUMAN_NAME : AI_NAME;
+      return `${sender}: ${body}`.trim();
+    }).filter(Boolean).join("\n\n");
+    if (!text){ showToast("所选消息没有可复制的文字"); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(() => showToast("已复制")).catch(() => fallbackCopy(text));
+    } else fallbackCopy(text);
+  }
+  function deleteSelected(){
+    const keys = Array.from(selectedMessageKeys).filter(key => messageByKey.has(key));
+    if (!keys.length) return;
+    if (!window.confirm(`确定删除选中的 ${keys.length} 条消息吗？`)) return;
+    for (const key of keys){
+      deletedKeys.add(key);
+      removeMessage(key, { render:false, cache:false, journal:true });
+    }
+    persistDeletedKeys();
+    scheduleCacheSave({ allowShrink:true });
+    scheduleRender({ preserveAnchor:true });
+    stopSelection();
+    showToast(`已删除 ${keys.length} 条消息`);
   }
 
   // 长按检测 —— 用 touch 事件自己计时。不用 pointer:iOS 一识别长按就给页面发 pointercancel,
@@ -8148,14 +8305,30 @@ window.addEventListener("keydown", event => {
     open(bubble, Number.isInteger(attachmentIndex) ? attachmentIndex : null);
   });
 
+  scrollEl.addEventListener("click", e => {
+    if (!messageSelectionActive) return;
+    if (e.target.closest("a,button,input,textarea,video,audio,.message-code-preview")) return;
+    const row = e.target.closest("[data-message-key]");
+    if (!row || !scrollEl.contains(row)) return;
+    e.preventDefault();
+    toggleSelected(row.dataset.messageKey);
+  });
+  if (selectBar) selectBar.addEventListener("click", e => {
+    const action = e.target.closest("[data-selection-act]")?.dataset.selectionAct;
+    if (action === "copy") copySelected();
+    else if (action === "delete") deleteSelected();
+    else if (action === "cancel") stopSelection();
+  });
+
   scrim.addEventListener("click", () => { if (swallowClick){ swallowClick = false; return; } close(); });
   actions.addEventListener("click", (e) => {
     const act = e.target.closest(".msg-act");
     if (!act) return;
     if (act.dataset.act === "copy") doCopy();
+    else if (act.dataset.act === "select") { const key = openKey; close(); startSelection(key); }
     else if (act.dataset.act === "delete") doDelete();
   });
-  window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape"){ close(); if (messageSelectionActive) stopSelection(); } });
   window.addEventListener("resize", close);
   scrollEl.addEventListener("scroll", () => { if (isOpen()) close(); }, { passive:true });
 })();
@@ -8668,6 +8841,110 @@ function renderConversationList(){
       </button>
     </div>`).join("") : '<div class="conversation-empty">还没有对话。<br>点右上角的＋开始。</div>';
 }
+const conversationSearchCache = new Map();
+let conversationSearchRun = 0, conversationSearchTimer = null;
+async function readConversationSearchMessages(id){
+  const [indexed,journal] = await Promise.all([readConversationIndexed(id),readMessageJournal(id)]);
+  const local = readConversationLocal(id), merged = new Map();
+  [...(indexed || []),...(local || []),...(journal || [])].forEach(message => {
+    if (!message || message.id == null) return;
+    const key = msgKey(message.id);
+    if (deletedKeys.has(key)) merged.delete(key); else merged.set(key,message);
+  });
+  if (!merged.size && id === DEFAULT_CONVERSATION_ID){
+    (await readLegacyMessages()).forEach(message => {
+      if (message && message.id != null && !deletedKeys.has(msgKey(message.id))) merged.set(msgKey(message.id),message);
+    });
+  }
+  return Array.from(merged.values()).sort((a,b) => (msgNum(a.id) - msgNum(b.id)) || ((Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0)));
+}
+function closeConversationSearch(){
+  conversationSearchRun++;
+  if (conversationSearchTimer){ clearTimeout(conversationSearchTimer); conversationSearchTimer = null; }
+  if (conversationSearch){ conversationSearch.classList.remove("open"); conversationSearch.setAttribute("aria-hidden","true"); }
+}
+function openConversationSearch(){
+  if (!conversationSearch || !conversationSearchWindow) return;
+  conversationSearchRun++;
+  if (conversationSearchTimer){ clearTimeout(conversationSearchTimer); conversationSearchTimer = null; }
+  conversationSearchCache.clear();
+  conversationSearchWindow.innerHTML = conversations.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title || "新对话")}</option>`).join("");
+  if (conversations.some(item => item.id === activeConversationId)) conversationSearchWindow.value = activeConversationId;
+  if (conversationSearchInput) conversationSearchInput.value = "";
+  if (conversationSearchStatus) conversationSearchStatus.textContent = "选择聊天窗口并输入关键词";
+  if (conversationSearchResults) conversationSearchResults.innerHTML = "";
+  conversationSearch.classList.add("open");
+  conversationSearch.setAttribute("aria-hidden","false");
+  requestAnimationFrame(() => conversationSearchInput && conversationSearchInput.focus());
+}
+function conversationSearchSnippet(text,query){
+  const source = String(text || "").replace(/\s+/g," ").trim();
+  const at = source.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
+  if (at < 0) return escapeHtml(source.slice(0,150));
+  const start = Math.max(0,at - 58), end = Math.min(source.length,at + query.length + 88);
+  return `${start ? "…" : ""}${escapeHtml(source.slice(start,at))}<mark>${escapeHtml(source.slice(at,at + query.length))}</mark>${escapeHtml(source.slice(at + query.length,end))}${end < source.length ? "…" : ""}`;
+}
+async function runConversationSearch(){
+  const run = ++conversationSearchRun;
+  const id = conversationSearchWindow && conversationSearchWindow.value;
+  const query = String(conversationSearchInput && conversationSearchInput.value || "").trim();
+  if (conversationSearchResults) conversationSearchResults.innerHTML = "";
+  if (!query){ if (conversationSearchStatus) conversationSearchStatus.textContent = "选择聊天窗口并输入关键词"; return; }
+  if (conversationSearchStatus) conversationSearchStatus.textContent = "正在搜索…";
+  try{
+    let messages = conversationSearchCache.get(id);
+    if (!messages){ messages = await readConversationSearchMessages(id); conversationSearchCache.set(id,messages); }
+    if (run !== conversationSearchRun) return;
+    const needle = query.toLocaleLowerCase();
+    const hits = messages.filter(message => message.status !== "failed" && message.status !== "streaming" && assistantDisplayText(message).toLocaleLowerCase().includes(needle))
+      .sort((a,b) => (Date.parse(b.ts) || 0) - (Date.parse(a.ts) || 0));
+    const conversation = conversations.find(item => item.id === id);
+    if (conversationSearchStatus) conversationSearchStatus.textContent = hits.length ? `找到 ${hits.length} 条匹配消息` : "没有找到匹配内容";
+    if (conversationSearchResults) conversationSearchResults.innerHTML = hits.map(message => `<button class="conversation-search-result" type="button" data-search-conversation="${escapeHtml(id)}" data-search-message="${escapeHtml(msgKey(message.id))}">
+      <span class="conversation-search-result-meta"><span>${escapeHtml(conversation && conversation.title || "聊天窗口")} · ${message.from === "human" ? "你" : "Hannes"}</span><time>${escapeHtml(fmtDay(message.ts))}</time></span>
+      <span class="conversation-search-result-text">${conversationSearchSnippet(assistantDisplayText(message),query)}</span></button>`).join("");
+  }catch(error){
+    console.error("Conversation search failed",error);
+    if (run === conversationSearchRun && conversationSearchStatus) conversationSearchStatus.textContent = "读取聊天记录失败，请稍后重试";
+  }
+}
+function scheduleConversationSearch(){
+  conversationSearchRun++;
+  if (conversationSearchTimer) clearTimeout(conversationSearchTimer);
+  conversationSearchTimer = setTimeout(() => { conversationSearchTimer = null; void runConversationSearch(); },120);
+}
+function scrollToConversationMessage(messageId){
+  const key = msgKey(messageId), rowKey = `m:${key}`;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (rowsDirty || !virtualRows.length) renderVirtualList({ recenter:true });
+    if (prefixSumsDirty) rebuildPrefixSums();
+    const index = rowIndexByKey.get(rowKey);
+    if (index == null){ showToast("找不到这条消息"); return; }
+    const paddingTop = parseFloat(getComputedStyle(scrollEl).paddingTop) || 0;
+    scrollEl.scrollTop = Math.max(0,prefixSums[index] + paddingTop - scrollEl.clientHeight * .34);
+    setTimeout(() => {
+      let row = findRenderedMessageRow(key);
+      if (!row && virtualRows.length > DOM_WINDOW){ renderVirtualList({ recenter:true }); row = findRenderedMessageRow(key); }
+      if (!row) return;
+      row.scrollIntoView({ block:"center", behavior:"smooth" });
+      row.classList.add("conversation-search-hit");
+      setTimeout(() => row.classList.remove("conversation-search-hit"),1700);
+    },SCROLL_IDLE_MS + 90);
+  }));
+}
+async function openConversationSearchResult(id,messageId){
+  const target = conversations.find(item => item.id === id);
+  if (!target) return;
+  let messages = conversationSearchCache.get(id);
+  if (!messages) messages = await readConversationSearchMessages(id);
+  closeConversationSearch();
+  if (id !== activeConversationId) await enterConversation(id); else closeConversationList();
+  messages.forEach(message => {
+    if (!messageByKey.has(msgKey(message.id))) setMessage({ ...message,status:"sent" },{ render:false,cache:false,journal:false,conversationId:id });
+  });
+  if (rowsDirty) renderVirtualList({ stickToBottom:false });
+  setTimeout(() => scrollToConversationMessage(messageId),420);
+}
 function renameConversation(id){
   const row = conversations.find(conversation => conversation.id === id);
   if (!row) return;
@@ -8694,6 +8971,7 @@ function applyConversationMode(){
 async function enterConversation(id){
   const target = conversations.find(c => c.id === id);
   if (!target) return;
+  if (window.clearMessageSelection) window.clearMessageSelection();
   if (activeGenerationController) stopActiveGeneration();
   await flushMessageCacheNow();
   activeConversationId = target.id;
@@ -8731,6 +9009,7 @@ async function deleteConversation(id){
     await queueConversationIndexedWrite(replacement.id, [], { allowShrink:true }).catch(() => {});
   }
   if (deletingActive){
+    if (window.clearMessageSelection) window.clearMessageSelection();
     const next = conversations.slice().sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0];
     activeConversationId = next.id;
     saveConversationIndex();
@@ -9061,6 +9340,18 @@ if (conversationList) conversationList.addEventListener("keydown", e => {
   if (item){ e.preventDefault(); void enterConversation(item.dataset.conversationId); }
 });
 if (conversationAdd) conversationAdd.addEventListener("click", () => void createConversation());
+if (conversationSearchOpen) conversationSearchOpen.addEventListener("click", openConversationSearch);
+if (conversationSearchBack) conversationSearchBack.addEventListener("click", closeConversationSearch);
+if (conversationSearchInput) conversationSearchInput.addEventListener("input", scheduleConversationSearch);
+if (conversationSearchWindow) conversationSearchWindow.addEventListener("change", scheduleConversationSearch);
+if (conversationSearchInput) conversationSearchInput.addEventListener("keydown", e => {
+  if (e.key === "Enter"){ e.preventDefault(); if (conversationSearchTimer) clearTimeout(conversationSearchTimer); void runConversationSearch(); }
+  if (e.key === "Escape") closeConversationSearch();
+});
+if (conversationSearchResults) conversationSearchResults.addEventListener("click", e => {
+  const result = e.target.closest("[data-search-message]");
+  if (result) void openConversationSearchResult(result.dataset.searchConversation,result.dataset.searchMessage);
+});
 if (conversationImport) conversationImport.addEventListener("click", () => conversationImportInput && conversationImportInput.click());
 if (conversationExport) conversationExport.addEventListener("click", () => void openExportPicker());
 if (exportPickerBack) exportPickerBack.addEventListener("click", closeExportPicker);
