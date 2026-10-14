@@ -45,7 +45,6 @@
     --keyboard-offset: 0px;
     --ios-pwa-bottom-bleed: 0px;
     --ios-pwa-safe-bleed: max(var(--ios-pwa-bottom-bleed), calc(env(safe-area-inset-bottom) + 16px));
-    --composer-lift: clamp(58px, 8vh, 70px);
     --ref-width: 941px;
     --ref-height: 1672px;
     --font-en: "Cormorant Garamond", Georgia, serif;
@@ -94,12 +93,12 @@
     --avatar-size: clamp(32px, 5vw, 48px);
     --bubble-radius: clamp(14px, 2vw, 20px);
     --composer-h: clamp(44px, 6vw, 72px);
-    --message-bottom-gap: clamp(18px, 3vw, 30px);
+    --message-bottom-gap: clamp(28px, 5vw, 56px);
     --motion-fast: 150ms;
     --motion-normal: 260ms;
     --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
     /* composer 占据的底部区域(含安全区/键盘):scroll 底 padding 与边缘渐隐共用同一来源,保持对齐 */
-    --composer-zone: calc(var(--composer-h) + 16px + env(safe-area-inset-bottom) + var(--ios-pwa-bottom-bleed) + var(--keyboard-offset) - var(--composer-lift));
+    --composer-zone: calc(var(--composer-h) + 16px + env(safe-area-inset-bottom) + var(--ios-pwa-bottom-bleed) + var(--keyboard-offset));
     /* profile / settings — frosted glass, blends into the wallpaper */
     --card-bg: rgba(244,248,250,.42);
     --card-line: rgba(150,168,182,.12);
@@ -1156,7 +1155,7 @@
     position: fixed;
     left: 0;
     right: 0;
-    bottom: calc(-1 * var(--ios-pwa-safe-bleed) + var(--composer-lift));
+    bottom: calc(-1 * var(--ios-pwa-safe-bleed));
     z-index: 100;
     width: min(100vw, var(--ref-width));
     margin: 0 auto;
