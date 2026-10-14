@@ -45,7 +45,7 @@
     --keyboard-offset: 0px;
     --ios-pwa-bottom-bleed: 0px;
     --ios-pwa-safe-bleed: max(var(--ios-pwa-bottom-bleed), calc(env(safe-area-inset-bottom) + 16px));
-    --composer-lift: clamp(18px, 4vh, 28px);
+    --composer-lift: clamp(58px, 8vh, 70px);
     --ref-width: 941px;
     --ref-height: 1672px;
     --font-en: "Cormorant Garamond", Georgia, serif;
@@ -99,7 +99,7 @@
     --motion-normal: 260ms;
     --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
     /* composer 占据的底部区域(含安全区/键盘):scroll 底 padding 与边缘渐隐共用同一来源,保持对齐 */
-    --composer-zone: calc(var(--composer-h) + 16px + env(safe-area-inset-bottom) + var(--ios-pwa-bottom-bleed) + var(--keyboard-offset) + var(--composer-lift));
+    --composer-zone: calc(var(--composer-h) + 16px + env(safe-area-inset-bottom) + var(--ios-pwa-bottom-bleed) + var(--keyboard-offset) - var(--composer-lift));
     /* profile / settings — frosted glass, blends into the wallpaper */
     --card-bg: rgba(244,248,250,.42);
     --card-line: rgba(150,168,182,.12);
