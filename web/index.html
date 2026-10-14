@@ -732,7 +732,7 @@
   .voice-loading i:nth-child(2){ animation-delay:.15s; }
   .voice-loading i:nth-child(3){ animation-delay:.3s; }
   @keyframes voiceDot{ 0%,100%{ transform:translateY(0); opacity:.28; } 50%{ transform:translateY(-3px); opacity:.8; } }
-  .voice-player.error .voice-duration::after{ content:"!"; color:#b45f62; }
+  .voice-player.error .voice-duration::after{ content:"!"; color:#b45f62; cursor:pointer; }
   .meta{
     display:inline; margin-left: clamp(10px, 1.4vw, 16px); white-space: nowrap;
     font-family: var(--font-en), var(--font-cn);
@@ -6406,6 +6406,7 @@ function cachedMessageTts(cacheKey, voiceText){
     return entry;
   }).catch(error => {
     entry.status = "error";
+    if (ttsAudioCache.get(cacheKey) === entry) ttsAudioCache.delete(cacheKey);
     throw error;
   });
   ttsAudioCache.set(cacheKey, entry);
@@ -6460,6 +6461,24 @@ function setupVoicePlayer(player, message, voiceText){
     player.classList.add("error");
     const loading = player.querySelector(".voice-loading");
     if (loading) loading.remove();
+    const retry = () => {
+      if (!player.isConnected || !player.classList.contains("error")) return;
+      player.classList.remove("error");
+      player.classList.add("loading");
+      const duration = player.querySelector(".voice-duration");
+      if (duration) duration.innerHTML = '<span class="voice-loading" aria-label="语音加载中"><i></i><i></i><i></i></span>';
+      setupVoicePlayer(player, message, voiceText);
+    };
+    player.title = "语音加载失败，点击此处重试";
+    player.setAttribute("role", "button");
+    player.setAttribute("tabindex", "0");
+    player.addEventListener("click", retry, { once:true });
+    player.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " "){
+        event.preventDefault();
+        retry();
+      }
+    }, { once:true });
   });
 }
 function attImgError(img){
