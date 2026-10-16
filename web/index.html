@@ -245,7 +245,9 @@
   :root.dark-wall-header .app .peerpill .name,
   :root.dark-wall-header .app .peerpill .status,
   :root.dark-wall-header .app[data-conn="reconnecting"] .peerpill .status,
-  :root.dark-wall-header .app .peerpill .status.typing{
+  :root.dark-wall-header .app .peerpill .status.typing,
+  :root.dark-wall-header .app .backbtn,
+  :root.dark-wall-header .app .header-actions .topbtn{
     color:#fff;
     text-shadow:0 1px 12px rgba(0,0,0,.62);
   }
@@ -8231,11 +8233,7 @@ window.addEventListener("keydown", event => {
 
   function copySelected(){
     const selected = sortedMessages().filter(m => selectedMessageKeys.has(msgKey(m._key)));
-    const text = selected.map(m => {
-      const body = assistantDisplayText(m) || "";
-      const sender = m.from === "human" ? HUMAN_NAME : AI_NAME;
-      return `${sender}: ${body}`.trim();
-    }).filter(Boolean).join("\n\n");
+    const text = selected.map(m => (assistantDisplayText(m) || "").trim()).filter(Boolean).join("\n\n");
     if (!text){ showToast("所选消息没有可复制的文字"); return; }
     if (navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text).then(() => showToast("已复制")).catch(() => fallbackCopy(text));
