@@ -706,9 +706,9 @@
   .html-preview-frame{ flex:1; width:100%; min-height:0; border:0; background:#fff; }
   .bubble .txt strong{ font-weight: 700; }
   .voice-player{
-    display:inline-flex; align-items:center; gap:8px; min-width:210px; max-width:100%;
+    display:inline-flex; align-items:center; gap:8px; min-width:min(210px,100%); max-width:100%; box-sizing:border-box;
     margin:5px 3px; padding:8px 10px; border-radius:13px;
-    color:inherit; background:rgba(118,132,148,.13); vertical-align:middle;
+    color:inherit; background:transparent; vertical-align:middle;
   }
   .voice-play{
     width:28px; height:28px; flex:none; border:0; border-radius:50%; padding:0;
@@ -718,8 +718,8 @@
   .voice-play::before{ content:""; width:0; height:0; margin-left:2px; border-top:5px solid transparent; border-bottom:5px solid transparent; border-left:8px solid currentColor; }
   .voice-player.playing .voice-play::before{ width:8px; height:10px; margin:0; border:0; background:linear-gradient(90deg,currentColor 0 3px,transparent 3px 5px,currentColor 5px 8px); }
   .voice-waveform{
-    flex:1 1 auto; min-width:138px; height:30px; display:flex; align-items:center; justify-content:center;
-    gap:1px; overflow:hidden; cursor:pointer; touch-action:manipulation;
+    flex:1 1 auto; min-width:0; height:30px; display:flex; align-items:center; justify-content:center;
+    gap:0; overflow:hidden; cursor:pointer; touch-action:manipulation;
   }
   .voice-wave-bar{
     width:2px; min-width:2px; border-radius:999px;
@@ -2893,14 +2893,12 @@
         <div class="push-hint" id="brainHint"></div>
       </section>
 
-      <!-- 模型选择（占位 · 假按键，以后接真切换）-->
+      <!-- Model ID is sent with each gateway request. -->
       <section class="settings-card">
         <div class="settings-label">模型选择</div>
         <div class="segmented" id="modelSeg" role="group" aria-label="模型选择">
-          <button type="button" data-val="Opus 5.5" class="active">Opus 5.5</button>
-          <button type="button" data-val="Opus 4.7">Opus 4.7</button>
-          <button type="button" data-val="Opus 4.8">Opus 4.8</button>
-          <button type="button" data-val="Fable 5">Fable 5</button>
+          <button type="button" data-val="claude-opus-5-5" class="active">Opus 5.5</button>
+          <button type="button" data-val="claude-opus-4-6">Opus 4.6</button>
         </div>
       </section>
 
@@ -5960,6 +5958,11 @@ wireSegmented($("#voiceLanguageSeg"), "companion_voice_stt_language");
 
 function fetchToolsEnabled(){
   return localStorage.getItem("companion_fetch_tools") !== "off";
+}
+const AVAILABLE_MODEL_IDS = new Set(["claude-opus-4-6", "claude-opus-5-5"]);
+function selectedModelId(){
+  const saved = localStorage.getItem("companion_pick_model");
+  return AVAILABLE_MODEL_IDS.has(saved) ? saved : CONFIG.MODEL;
 }
 
 if (contextSlider){
@@ -10563,7 +10566,7 @@ async function requestGateway(messages, systemContent, signal, options = {}){
   const requestBody = {
     system:systemContent || "",
     messages,
-    model:CONFIG.MODEL,
+    model:selectedModelId(),
     stream:true,
     ...(options.voice ? { voice:true } : {}),
     ...(fetchToolsEnabled() ? { tools:TOOLS } : {})
