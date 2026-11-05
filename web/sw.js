@@ -2,7 +2,7 @@
    IMPORTANT: bump CACHE on every front-end change, or installed clients keep the
    old shell (the precached index.html won't refresh until the SW reinstalls). */
 const AI_NAME = "Hannes";          // push-title fallback; keep in sync with index.html CONFIG.AI_NAME
-const CACHE = "companion-v172-model-switch-voice-bubble";
+const CACHE = "companion-v173-safe-cache-recovery";
 const PRECACHE = [
   "./index.html",
   "./chat-light.webp", "./chat-harbor.webp",
@@ -40,15 +40,14 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(fetch(e.request, { cache: "reload" }).catch(() => caches.match("./index.html")));
     return;
   }
-  if (e.request.method === "GET" && url.origin === location.origin) {
+  const precachedUrl = PRECACHE.some(path => new URL(path, self.registration.scope).href === url.href);
+  // Cache only known shell assets. Caching every same-origin GET also captures
+  // private uploads and tokenized URLs, and lets the runtime cache grow without limit.
+  if (e.request.method === "GET" && url.origin === location.origin && precachedUrl) {
     e.respondWith(
       caches.match(e.request).then((r) => {
         if (r) return r;
-        return fetch(e.request).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-          return res;
-        });
+        return fetch(e.request);
       })
     );
   }

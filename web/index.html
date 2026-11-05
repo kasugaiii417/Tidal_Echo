@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v153">
+<link rel="manifest" href="manifest.webmanifest?build=v154">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -6286,6 +6286,7 @@ const TTS_AUDIO_STORE = "tts_audio";
 const CONVERSATIONS_KEY = "companion_conversations_v1";
 const ACTIVE_CONVERSATION_KEY = "companion_active_conversation_v1";
 const CONVERSATION_MESSAGES_PREFIX = "companion_conversation_messages_v1:";
+const RECENT_CONVERSATION_SUFFIX = ":recent";
 const DEFAULT_CONVERSATION_ID = "main";
 function loadConversationIndex(){
   let rows = [];
@@ -8537,6 +8538,16 @@ async function deleteConversationTtsAudio(conversationId){
 function conversationMessagesKey(id = activeConversationId){
   return CONVERSATION_MESSAGES_PREFIX + id;
 }
+function knownConversationCount(id = activeConversationId){
+  try{ return Math.max(0, Number(localStorage.getItem(`${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`) || 0) || 0); }
+  catch(_){ return 0; }
+}
+function hasConversationLocalSnapshot(id = activeConversationId){
+  const key = conversationMessagesKey(id);
+  try{ for (let index = 0; index < localStorage.length; index++) if (localStorage.key(index) === key) return true; }
+  catch(_){ }
+  return false;
+}
 function readConversationLocal(id = activeConversationId){
   try{
     const raw = localStorage.getItem(conversationMessagesKey(id));
@@ -8545,6 +8556,28 @@ function readConversationLocal(id = activeConversationId){
     return Array.isArray(rows) ? rows.sort((a, b) => msgNum(a.id) - msgNum(b.id)) : [];
   }catch(_){ return []; }
 }
+async function readConversationRecentIndexed(id = activeConversationId){
+  try{
+    const db = await openMessageDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(CONVERSATION_CACHE_STORE, "readonly");
+      const req = tx.objectStore(CONVERSATION_CACHE_STORE).get(`${id}${RECENT_CONVERSATION_SUFFIX}`);
+      req.onsuccess = () => {
+        const row = req.result;
+        const messages = row && Array.isArray(row.messages) ? row.messages : null;
+        const totalCount = Number(row && row.totalCount);
+        if (!messages || !Number.isFinite(totalCount) || totalCount < messages.length || messages.length !== Math.min(totalCount,HISTORY_PAGE_SIZE)){ resolve(null); return; }
+        const filtered = deletedKeys.size ? messages.filter(message => !deletedKeys.has(msgKey(message && message.id))) : messages;
+        if (filtered.length !== messages.length){ resolve(null); return; }
+        resolve({ messages:messages.sort((a,b) => msgNum(a.id)-msgNum(b.id)), totalCount });
+      };
+      req.onerror = () => reject(req.error || new Error("recent conversation read"));
+      tx.oncomplete = () => db.close();
+      tx.onerror = () => { db.close(); reject(tx.error || new Error("recent conversation read")); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error("recent conversation read aborted")); };
+    });
+  }catch(_){ return null; }
+}
 async function readConversationIndexed(id = activeConversationId){
   try{
     const db = await openMessageDb();
@@ -8552,46 +8585,55 @@ async function readConversationIndexed(id = activeConversationId){
       const tx = db.transaction(CONVERSATION_CACHE_STORE, "readonly");
       const store = tx.objectStore(CONVERSATION_CACHE_STORE);
       const primaryReq = store.get(id);
-      const backupReq = store.get(`${id}:messages_backup`);
       tx.oncomplete = () => {
         const primary = primaryReq.result && Array.isArray(primaryReq.result.messages) ? primaryReq.result.messages : null;
-        const backup = backupReq.result && Array.isArray(backupReq.result.messages) ? backupReq.result.messages : null;
-        let recovered = primary;
-        let repairedFromBackup = false;
-        if (backup && backup.length){
-          const merged = new Map();
-          backup.forEach(message => {
-            const key = msgKey(message && message.id);
-            if (!deletedKeys.has(key)) merged.set(key, message);
-          });
-          (primary || []).forEach(message => {
-            const key = msgKey(message && message.id);
-            if (deletedKeys.has(key)) merged.delete(key); else merged.set(key, message);
-          });
-          recovered = Array.from(merged.values());
-          if (!primary || recovered.length > primary.length){
-            repairedFromBackup = true;
-            console.warn("Recovered missing conversation messages from IndexedDB backup", { id, primary:primary ? primary.length : 0, recovered:recovered.length });
+        const known = knownConversationCount(id);
+        // The count is recorded only after a successful full-cache write. If it
+        // matches the primary snapshot, avoid cloning the equally large backup.
+        if (primary && known > 0 && primary.length >= known){
+          db.close();
+          const complete = deletedKeys.size ? primary.filter(message => !deletedKeys.has(msgKey(message && message.id))) : primary;
+          resolve(complete.sort((a, b) => msgNum(a.id) - msgNum(b.id)));
+          return;
+        }
+        const backupTx = db.transaction(CONVERSATION_CACHE_STORE, "readonly");
+        const backupReq = backupTx.objectStore(CONVERSATION_CACHE_STORE).get(`${id}:messages_backup`);
+        backupTx.oncomplete = () => {
+          const backup = backupReq.result && Array.isArray(backupReq.result.messages) ? backupReq.result.messages : null;
+          let recovered = primary;
+          let repairedFromBackup = false;
+          if (backup && backup.length){
+            const merged = new Map();
+            backup.forEach(message => {
+              const key = msgKey(message && message.id);
+              if (!deletedKeys.has(key)) merged.set(key, message);
+            });
+            (primary || []).forEach(message => {
+              const key = msgKey(message && message.id);
+              if (deletedKeys.has(key)) merged.delete(key); else merged.set(key, message);
+            });
+            recovered = Array.from(merged.values());
+            if (!primary || recovered.length > primary.length){
+              repairedFromBackup = true;
+              console.warn("Recovered missing conversation messages from IndexedDB backup", { id, primary:primary ? primary.length : 0, recovered:recovered.length });
+            }
           }
-        }
-        db.close();
-        const sortedRecovered = recovered === null ? null : recovered.sort((a, b) => msgNum(a.id) - msgNum(b.id));
-        if (sortedRecovered){
-          try{
-            const countKey = `${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`;
-            const known = Number(localStorage.getItem(countKey) || 0) || 0;
-            if (sortedRecovered.length > known) localStorage.setItem(countKey,String(sortedRecovered.length));
-          }catch(_){ }
-        }
-        // Repair the primary immediately, before the UI narrows the in-memory
-        // window to its latest page and schedules another partial save.
-        if (repairedFromBackup && sortedRecovered){
-          queueConversationIndexedWrite(id, sortedRecovered, { allowShrink:true }).catch(error => console.error("conversation backup repair failed", error));
-        }
-        resolve(sortedRecovered);
+          db.close();
+          const sortedRecovered = recovered === null ? null : recovered.sort((a, b) => msgNum(a.id) - msgNum(b.id));
+          if (sortedRecovered && sortedRecovered.length > knownConversationCount(id)){
+            try{ localStorage.setItem(`${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`,String(sortedRecovered.length)); }catch(_){ }
+          }
+          if (repairedFromBackup && sortedRecovered){
+            queueConversationIndexedWrite(id, sortedRecovered, { allowShrink:true }).catch(error => console.error("conversation backup repair failed", error));
+          }
+          resolve(sortedRecovered);
+        };
+        backupTx.onerror = () => { db.close(); reject(backupTx.error || new Error("conversation backup read")); };
+        backupTx.onabort = () => { db.close(); reject(backupTx.error || new Error("conversation backup read aborted")); };
       };
-      primaryReq.onerror = () => reject(primaryReq.error || new Error("conversation cache read"));
-      backupReq.onerror = () => reject(backupReq.error || new Error("conversation backup read"));
+      primaryReq.onerror = () => { db.close(); reject(primaryReq.error || new Error("conversation cache read")); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error("conversation cache read")); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error("conversation cache read aborted")); };
     });
   }catch(_){ return null; }
 }
@@ -8642,9 +8684,11 @@ async function writeConversationIndexed(id, messages, { allowShrink = false } = 
       const backupMerged = new Map();
       (previousBackup || []).forEach(message => { const key = msgKey(message && message.id); if (!deletedKeys.has(key)) backupMerged.set(key,message); });
       (current || []).forEach(message => { const key = msgKey(message && message.id); if (deletedKeys.has(key)) backupMerged.delete(key); else backupMerged.set(key,message); });
-      if (backupMerged.size) store.put({ id:`${id}:messages_backup`, messages:Array.from(backupMerged.values()).sort((a,b) => msgNum(a.id) - msgNum(b.id)), updatedAt:Date.now() });
-      store.put({ id, messages:nextMessages, updatedAt:Date.now() });
+      const updatedAt = Date.now();
+      if (backupMerged.size) store.put({ id:`${id}:messages_backup`, messages:Array.from(backupMerged.values()).sort((a,b) => msgNum(a.id) - msgNum(b.id)), updatedAt });
+      store.put({ id, messages:nextMessages, updatedAt });
       savedCount = nextMessages.length;
+      store.put({ id:`${id}${RECENT_CONVERSATION_SUFFIX}`, messages:nextMessages.slice(-HISTORY_PAGE_SIZE), totalCount:savedCount, updatedAt });
     };
     currentReq.onsuccess = prepareWrite;
     backupReq.onsuccess = prepareWrite;
@@ -8666,6 +8710,24 @@ function queueConversationIndexedWrite(id, messages, options = {}){
     .then(() => writeConversationIndexed(id, messages, options));
   return conversationWriteChain;
 }
+function writeRecentConversationIndexed(id, messages, totalCount){
+  return openMessageDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
+    tx.objectStore(CONVERSATION_CACHE_STORE).put({
+      id:`${id}${RECENT_CONVERSATION_SUFFIX}`,
+      messages:messages.slice(-HISTORY_PAGE_SIZE),
+      totalCount,
+      updatedAt:Date.now()
+    });
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { const error = tx.error || new Error("recent conversation write"); db.close(); reject(error); };
+    tx.onabort = () => { const error = tx.error || new Error("recent conversation write aborted"); db.close(); reject(error); };
+  }));
+}
+function queueRecentConversationIndexedWrite(id, messages, totalCount){
+  conversationWriteChain = conversationWriteChain.catch(() => {}).then(() => writeRecentConversationIndexed(id,messages,totalCount));
+  return conversationWriteChain;
+}
 async function deleteConversationIndexed(id){
   try{ localStorage.removeItem(`${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`); }catch(_){ }
   try{
@@ -8675,6 +8737,7 @@ async function deleteConversationIndexed(id){
       const store = tx.objectStore(CONVERSATION_CACHE_STORE);
       store.delete(id);
       store.delete(`${id}:messages_backup`);
+      store.delete(`${id}${RECENT_CONVERSATION_SUFFIX}`);
       const journalReq = tx.objectStore(MESSAGE_JOURNAL_STORE).index("conversationId").openCursor(IDBKeyRange.only(id));
       journalReq.onsuccess = () => {
         const cursor = journalReq.result;
@@ -8698,9 +8761,12 @@ async function readLegacyMessages(){
   }catch(_){ return []; }
 }
 async function readCachedMessages(){
-  const indexed = await readConversationIndexed();
-  const local = readConversationLocal();
-  const journal = await readMessageJournal(activeConversationId);
+  const id = activeConversationId;
+  const known = knownConversationCount(id);
+  const indexed = await readConversationIndexed(id);
+  if (indexed !== null && known > 0 && indexed.length >= known && !hasConversationLocalSnapshot(id)) return indexed;
+  const local = readConversationLocal(id);
+  const journal = await readMessageJournal(id);
   const mergeJournal = (base) => {
     const merged = new Map();
     (base || []).forEach(message => {
@@ -8717,7 +8783,7 @@ async function readCachedMessages(){
   if (indexed !== null){
     if (local !== null && local.length > indexed.length){
       const recovered = mergeJournal(local);
-      await queueConversationIndexedWrite(activeConversationId, recovered, { allowShrink:true });
+      await queueConversationIndexedWrite(id, recovered, { allowShrink:true });
       console.warn("Recovered a longer pre-migration localStorage snapshot", { indexed:indexed.length, local:local.length });
       try{ localStorage.removeItem(conversationMessagesKey()); }catch(_){}
       return recovered;
@@ -8726,12 +8792,11 @@ async function readCachedMessages(){
     const recovered = mergeJournal(indexed);
     if (recovered.length > indexed.length){
       console.warn("Recovered recent messages from per-message journal", { indexed:indexed.length, recovered:recovered.length });
-      void queueConversationIndexedWrite(activeConversationId, recovered, { allowShrink:true });
+      void queueConversationIndexedWrite(id, recovered, { allowShrink:true });
     }
     return recovered;
   }
   if (local !== null){
-    const id = activeConversationId;
     const recovered = mergeJournal(local);
     await queueConversationIndexedWrite(id, recovered, { allowShrink:true });
     try{ localStorage.removeItem(conversationMessagesKey(id)); }catch(_){}
@@ -8747,6 +8812,19 @@ async function readCachedMessages(){
     return recovered;
   }
   return legacy;
+}
+async function readLatestCachedMessages(limit = HISTORY_PAGE_SIZE){
+  const id = activeConversationId;
+  if (!hasConversationLocalSnapshot(id)){
+    const recent = await readConversationRecentIndexed(id);
+    if (recent && recent.totalCount >= knownConversationCount(id)){
+      return { messages:recent.messages.slice(-limit), totalCount:recent.totalCount };
+    }
+  }
+  const all = await readCachedMessages();
+  const messages = all.slice(-limit);
+  void queueRecentConversationIndexedWrite(id, messages, all.length).catch(error => console.warn("recent conversation snapshot write failed",error));
+  return { messages, totalCount:all.length };
 }
 function cacheableMessages(){
   return sortedMessages()
@@ -8977,8 +9055,8 @@ async function enterConversation(id){
   await flushMessageCacheNow();
   activeConversationId = target.id;
   saveConversationIndex();
-  const messages = await readCachedMessages();
-  startChat(messages.slice(-HISTORY_PAGE_SIZE), { connect:!target.readOnly, fromCache:true });
+  const { messages } = await readLatestCachedMessages(HISTORY_PAGE_SIZE);
+  startChat(messages, { connect:!target.readOnly, fromCache:true });
   applyChromeSurface("chat");
   applyConversationMode();
   clearTimeout(pageTransitionTimer);
@@ -9014,8 +9092,8 @@ async function deleteConversation(id){
     const next = conversations.slice().sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0];
     activeConversationId = next.id;
     saveConversationIndex();
-    const messages = await readCachedMessages();
-    startChat(messages.slice(-HISTORY_PAGE_SIZE), { connect:!next.readOnly, fromCache:true });
+    const { messages } = await readLatestCachedMessages(HISTORY_PAGE_SIZE);
+    startChat(messages, { connect:!next.readOnly, fromCache:true });
     applyConversationMode();
   }else{
     saveConversationIndex();
@@ -10278,7 +10356,7 @@ async function loadSessions(){
 function loadBrain(){ setBrainUi("loop"); }
 async function saveBrain(){ setBrainUi("loop"); showToast("已连接 Gateway"); }
 async function apiLatestHistory(limit = HISTORY_PAGE_SIZE){
-  return (await readCachedMessages()).slice(-limit);
+  return (await readLatestCachedMessages(limit)).messages;
 }
 async function apiOlderHistory(beforeId, limit = HISTORY_PAGE_SIZE){
   return (await readCachedMessages()).filter(m => msgNum(m.id) < msgNum(beforeId)).slice(-limit);
@@ -10784,7 +10862,8 @@ async function init(){
     await loadSessions();
     loadBrain();
     const storageStartedAt = performance.now();
-    const cached = await readCachedMessages();
+    const cachedState = await readLatestCachedMessages(HISTORY_PAGE_SIZE);
+    const cached = cachedState.messages;
     const storageElapsed = performance.now() - storageStartedAt;
     if (storageElapsed > 2000){
       console.warn("Slow conversation recovery", {
@@ -10793,10 +10872,10 @@ async function init(){
       });
     }
 
-    /* apiLatestHistory() reads the same local archive again. Starting directly
-       from this snapshot avoids cloning/merging the entire history twice. */
+    /* Restore the recent IndexedDB snapshot first. Older history is loaded only
+       when the user scrolls upward or performs a full-history operation. */
     const latest = sessionFiltered(cached).slice(-HISTORY_PAGE_SIZE);
-    hasMoreOlder = cached.length > latest.length;
+    hasMoreOlder = cachedState.totalCount > latest.length;
     startChat(latest, { connect:false, fromCache:true });
     startRealtime();
 
@@ -10898,7 +10977,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v153";
+  const SW_BUILD = "v154";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
