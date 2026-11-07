@@ -6,7 +6,7 @@
 <title>___</title>
 
 <!-- PWA / iOS -->
-<link rel="manifest" href="manifest.webmanifest?build=v154">
+<link rel="manifest" href="manifest.webmanifest?build=v155">
 <link rel="preload" href="chat-light.webp" as="image" fetchpriority="high">
 <link rel="preload" href="avatar-sea.png" as="image">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -6983,12 +6983,14 @@ function mergeOlderMessages(msgs, anchor){
     const key = msgKey(m.id);
     if (seen.has(key)) return;
     seen.add(key);
-    setMessage({ ...m, status:"sent" }, { render:false });
+    // Older rows are already in the full archive. Keeping another per-message
+    // journal copy for every row the user scrolls past makes cold startup grow
+    // with browsing history and can pressure iOS WebKit.
+    setMessage({ ...m, status:"sent" }, { render:false, cache:false, journal:false });
     added = true;
   });
   if (added){
     scheduleRender({ anchorOverride: anchor });
-    scheduleCacheSave();
   }
 }
 async function loadOlderMessages(){
@@ -8394,7 +8396,7 @@ if (newMsgBtn) newMsgBtn.addEventListener("click", () => { hideNewMsgPill(); scr
 function openMessageDb(){
   return new Promise((resolve, reject) => {
     if (!window.indexedDB){ reject(new Error("indexedDB unavailable")); return; }
-    const req = indexedDB.open(CACHE_DB, 4);
+    const req = indexedDB.open(CACHE_DB, 5);
     let settled = false;
     const timer = setTimeout(() => { if (!settled){ settled = true; reject(new Error("indexedDB open timed out")); } },5000);
     req.onupgradeneeded = () => {
@@ -8402,9 +8404,18 @@ function openMessageDb(){
       if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE, { keyPath:"id" });
       if (!db.objectStoreNames.contains(CONVERSATION_CACHE_STORE)) db.createObjectStore(CONVERSATION_CACHE_STORE, { keyPath:"id" });
       if (!db.objectStoreNames.contains(TTS_AUDIO_STORE)) db.createObjectStore(TTS_AUDIO_STORE, { keyPath:"id" });
+      let journal;
       if (!db.objectStoreNames.contains(MESSAGE_JOURNAL_STORE)){
-        const journal = db.createObjectStore(MESSAGE_JOURNAL_STORE, { keyPath:"id" });
+        journal = db.createObjectStore(MESSAGE_JOURNAL_STORE, { keyPath:"id" });
         journal.createIndex("conversationId", "conversationId", { unique:false });
+      }else{
+        journal = req.transaction.objectStore(MESSAGE_JOURNAL_STORE);
+      }
+      // A small newest-first index lets startup recover messages that were
+      // journaled immediately before Safari suspended the page, without
+      // cloning the entire conversation journal into memory.
+      if (!journal.indexNames.contains("conversationUpdatedAt")){
+        journal.createIndex("conversationUpdatedAt", ["conversationId", "updatedAt"], { unique:false });
       }
     };
     req.onsuccess = () => {
@@ -8480,6 +8491,34 @@ async function readMessageJournal(conversationId){
       req.onsuccess = () => resolve((req.result || []).map(row => row.message).filter(Boolean));
       req.onerror = () => reject(req.error || new Error("message journal read"));
       tx.oncomplete = () => db.close();
+    });
+  }catch(_){ return []; }
+}
+async function readRecentMessageJournal(conversationId, limit = HISTORY_PAGE_SIZE){
+  try{
+    const db = await openMessageDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(MESSAGE_JOURNAL_STORE, "readonly");
+      const store = tx.objectStore(MESSAGE_JOURNAL_STORE);
+      const rows = [];
+      if (!store.indexNames.contains("conversationUpdatedAt")){
+        const req = store.index("conversationId").getAll(conversationId);
+        req.onsuccess = () => resolve((req.result || []).slice(-limit).map(row => row.message).filter(Boolean));
+        req.onerror = () => reject(req.error || new Error("recent message journal read"));
+      }else{
+        const range = IDBKeyRange.bound([conversationId, 0], [conversationId, Number.MAX_SAFE_INTEGER]);
+        const req = store.index("conversationUpdatedAt").openCursor(range, "prev");
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (!cursor || rows.length >= limit){ resolve(rows.map(row => row.message).filter(Boolean)); return; }
+          rows.push(cursor.value);
+          cursor.continue();
+        };
+        req.onerror = () => reject(req.error || new Error("recent message journal read"));
+      }
+      tx.oncomplete = () => db.close();
+      tx.onerror = () => { db.close(); reject(tx.error || new Error("recent message journal read")); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error("recent message journal read aborted")); };
     });
   }catch(_){ return []; }
 }
@@ -8710,22 +8749,53 @@ function queueConversationIndexedWrite(id, messages, options = {}){
     .then(() => writeConversationIndexed(id, messages, options));
   return conversationWriteChain;
 }
-function writeRecentConversationIndexed(id, messages, totalCount){
+function writeRecentConversationIndexed(id, messages, options = {}){
+  const exactTotal = Number.isFinite(Number(options.totalCount));
+  const requestedTotal = Number(options.totalCount);
+  const allowShrink = !!options.allowShrink;
   return openMessageDb().then(db => new Promise((resolve, reject) => {
     const tx = db.transaction(CONVERSATION_CACHE_STORE, "readwrite");
-    tx.objectStore(CONVERSATION_CACHE_STORE).put({
-      id:`${id}${RECENT_CONVERSATION_SUFFIX}`,
-      messages:messages.slice(-HISTORY_PAGE_SIZE),
-      totalCount,
-      updatedAt:Date.now()
-    });
-    tx.oncomplete = () => { db.close(); resolve(); };
+    const store = tx.objectStore(CONVERSATION_CACHE_STORE);
+    const recentId = `${id}${RECENT_CONVERSATION_SUFFIX}`;
+    const currentReq = store.get(recentId);
+    let savedTotal = 0;
+    currentReq.onsuccess = () => {
+      const nextMessages = messages.slice(-HISTORY_PAGE_SIZE);
+      const current = currentReq.result;
+      const previousMessages = current && Array.isArray(current.messages) ? current.messages : [];
+      const previousKeys = new Set(previousMessages.map(message => msgKey(message && message.id)));
+      const nextKeys = new Set(nextMessages.map(message => msgKey(message && message.id)));
+      const previousTotal = Number(current && current.totalCount) || 0;
+      let totalCount;
+      if (exactTotal){
+        totalCount = Math.max(nextMessages.length, requestedTotal);
+      }else if (!current){
+        totalCount = Math.max(knownConversationCount(id), nextMessages.length);
+      }else{
+        const added = nextMessages.reduce((count, message) => count + (!previousKeys.has(msgKey(message && message.id)) ? 1 : 0), 0);
+        const removed = allowShrink
+          ? previousMessages.reduce((count, message) => {
+              const key = msgKey(message && message.id);
+              return count + (deletedKeys.has(key) && !nextKeys.has(key) ? 1 : 0);
+            }, 0)
+          : 0;
+        totalCount = Math.max(nextMessages.length, previousTotal + added - removed, allowShrink ? 0 : knownConversationCount(id));
+      }
+      savedTotal = totalCount;
+      store.put({ id:recentId, messages:nextMessages, totalCount, updatedAt:Date.now() });
+    };
+    currentReq.onerror = () => { try{ tx.abort(); }catch(_){} };
+    tx.oncomplete = () => {
+      db.close();
+      try{ localStorage.setItem(`${CONVERSATION_MESSAGES_PREFIX}known_count:${id}`, String(savedTotal)); }catch(_){ }
+      resolve();
+    };
     tx.onerror = () => { const error = tx.error || new Error("recent conversation write"); db.close(); reject(error); };
     tx.onabort = () => { const error = tx.error || new Error("recent conversation write aborted"); db.close(); reject(error); };
   }));
 }
-function queueRecentConversationIndexedWrite(id, messages, totalCount){
-  conversationWriteChain = conversationWriteChain.catch(() => {}).then(() => writeRecentConversationIndexed(id,messages,totalCount));
+function queueRecentConversationIndexedWrite(id, messages, options = {}){
+  conversationWriteChain = conversationWriteChain.catch(() => {}).then(() => writeRecentConversationIndexed(id,messages,options));
   return conversationWriteChain;
 }
 async function deleteConversationIndexed(id){
@@ -8792,7 +8862,7 @@ async function readCachedMessages(){
     const recovered = mergeJournal(indexed);
     if (recovered.length > indexed.length){
       console.warn("Recovered recent messages from per-message journal", { indexed:indexed.length, recovered:recovered.length });
-      void queueConversationIndexedWrite(id, recovered, { allowShrink:true });
+      void queueRecentConversationIndexedWrite(id, recovered, { totalCount:recovered.length });
     }
     return recovered;
   }
@@ -8816,14 +8886,33 @@ async function readCachedMessages(){
 async function readLatestCachedMessages(limit = HISTORY_PAGE_SIZE){
   const id = activeConversationId;
   if (!hasConversationLocalSnapshot(id)){
-    const recent = await readConversationRecentIndexed(id);
+    const [recent, journal] = await Promise.all([readConversationRecentIndexed(id), readRecentMessageJournal(id, limit)]);
     if (recent && recent.totalCount >= knownConversationCount(id)){
-      return { messages:recent.messages.slice(-limit), totalCount:recent.totalCount };
+      const recovered = new Map();
+      recent.messages.forEach(message => recovered.set(msgKey(message && message.id), message));
+      const recentIds = recent.messages.map(message => msgNum(message && message.id)).filter(id => id > 0);
+      const oldestRecentId = recentIds.length ? Math.min(...recentIds) : 0;
+      let added = 0;
+      journal.forEach(message => {
+        const key = msgKey(message && message.id);
+        if (!message || deletedKeys.has(key)) return;
+        // A prior version journaled rows merely because the user scrolled up.
+        // They belong to older pages, not the latest snapshot being restored.
+        if (!recovered.has(key) && oldestRecentId && msgNum(message.id) < oldestRecentId) return;
+        if (!recovered.has(key)) added++;
+        recovered.set(key, message.status === "sending" ? { ...message, status:"sent" } : message);
+      });
+      const messages = Array.from(recovered.values())
+        .sort((a,b) => msgNum(a.id) - msgNum(b.id))
+        .slice(-limit);
+      const totalCount = Math.max(messages.length, recent.totalCount + added);
+      if (added) void queueRecentConversationIndexedWrite(id, messages, { totalCount });
+      return { messages, totalCount };
     }
   }
   const all = await readCachedMessages();
   const messages = all.slice(-limit);
-  void queueRecentConversationIndexedWrite(id, messages, all.length).catch(error => console.warn("recent conversation snapshot write failed",error));
+  void queueRecentConversationIndexedWrite(id, messages, { totalCount:all.length }).catch(error => console.warn("recent conversation snapshot write failed",error));
   return { messages, totalCount:all.length };
 }
 function cacheableMessages(){
@@ -8835,7 +8924,11 @@ function writeMessageCache({ allowShrink = false } = {}){
   const conversation = currentConversation();
   if (conversation && conversation.readOnly) return;
   const items = cacheableMessages();
-  const indexedSave = queueConversationIndexedWrite(activeConversationId, items, { allowShrink }).catch(e => console.error("indexed conversation save failed", e));
+  // Do not rewrite the full archive while the user is sending a message. On
+  // iOS, cloning a long primary cache plus its backup can terminate the WebKit
+  // process exactly as an optimistic message is painted. The full archive is
+  // retained for import/search; the hot path stores only the current window.
+  const indexedSave = queueRecentConversationIndexedWrite(activeConversationId, items, { allowShrink }).catch(e => console.error("recent conversation save failed", e));
   updateConversationSummary(items);
   return indexedSave;
 }
@@ -10977,7 +11070,7 @@ if (window.visualViewport){
 /* Service Worker: version the script URL and bypass Safari's HTTP cache so an
    installed Home Screen app cannot stay pinned to an older shell indefinitely. */
 if ("serviceWorker" in navigator){
-  const SW_BUILD = "v154";
+  const SW_BUILD = "v155";
   const SW_RELOAD_KEY = `companion_sw_reloaded_${SW_BUILD}`;
   let swReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
