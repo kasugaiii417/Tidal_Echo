@@ -10495,8 +10495,8 @@ function gatewayContentForMessage(m, includeTimestamp = false){
   });
   return blocks;
 }
-function gatewayHistoryMessages(){
-  const ordered = sortedMessages();
+function gatewayHistoryMessages(sourceMessages = sortedMessages()){
+  const ordered = sourceMessages.slice().sort((a, b) => (sortId(a) - sortId(b)) || ((a._order || 0) - (b._order || 0)));
   const recent = [];
   let remainingUsers = contextTurnLimit();
   for (let index = ordered.length - 1; index >= 0; index--){
@@ -10529,7 +10529,24 @@ function gatewayHistoryMessages(){
       return { role:m.from === "human" ? "user" : "assistant", content:gatewayContentForMessage(m, m.from === "human") };
     });
 }
-function gatewayConversation(){
+let contextArchiveRows = null;
+let contextArchiveTurns = 0;
+let contextArchiveConversationId = "";
+function contextSourceUserCount(rows){
+  return rows.filter(m => (m.from === "human" || m.from === "ai") && m.kind !== "thinking" && m.kind !== "act" && m.status !== "failed" && m.from === "human").length;
+}
+function contextSourceTail(rows, turns){
+  const ordered = rows.slice().sort((a, b) => sortId(a) - sortId(b));
+  let users = 0, start = 0;
+  for (let i = ordered.length - 1; i >= 0; i--){
+    const m = ordered[i];
+    if ((m.from !== "human" && m.from !== "ai") || m.kind === "thinking" || m.kind === "act" || m.status === "failed") continue;
+    if (m.from === "human" && ++users >= turns){ start = i; break; }
+    start = i;
+  }
+  return ordered.slice(start).filter(m => !deletedKeys.has(msgKey(m.id)));
+}
+function gatewayConversation(sourceMessages){
   const systemPrompt = loadSystemPrompt();
   const memories = loadMemories();
   const memoryXml = memories.map(m => `<record><id>${m.id}</id><content>${m.content}</content></record>`).join("\n");
@@ -10550,7 +10567,7 @@ For add, normally omit id so the app assigns count + 1 (skipping an occupied num
   const voiceCallProtocol = `## Voice Call Controls
 The prefix [voice call] on a user message is metadata indicating spoken input. Never repeat or quote [voice call] or [voicecall] in your response. If you choose to end an active voice call, emit [hangup] exactly once; the client will hide it and close the call.`;
   const systemContent = systemPrompt + "\n\n## Memories\n<memories>\n" + memoryXml + "\n</memories>\n\n" + memoryProtocol + "\n\n" + voiceCallProtocol;
-  const history = gatewayHistoryMessages();
+  const history = gatewayHistoryMessages(sourceMessages);
   return [{ role:"system", content:systemContent }, ...history];
 }
 function localMessageId(){
@@ -10858,7 +10875,34 @@ async function apiSend(text, attachments, reservedHumanId, options = {}){
   let finalText = "";
   let assistantRequestedHangup = false;
   try{
-    const messages = gatewayConversation();
+    // The chat view only keeps a recent page in memory until the user scrolls
+    // upward. Use that page for normal context sizes; scan IndexedDB only when
+    // the requested turns exceed the loaded window, then retain just that tail.
+    // Overlay live rows so the just-sent turn and unsaved edits are included.
+    const loadedRows = sortedMessages().filter(message => !deletedKeys.has(msgKey(message.id)));
+    const requestedTurns = contextTurnLimit();
+    if (contextArchiveConversationId !== generationConversationId){
+      contextArchiveRows = null;
+      contextArchiveTurns = 0;
+      contextArchiveConversationId = generationConversationId;
+    }
+    let contextRows = loadedRows;
+    const needsOlderArchive = hasMoreOlder && contextSourceUserCount(loadedRows) < requestedTurns;
+    if (needsOlderArchive && (!contextArchiveRows || contextArchiveTurns < requestedTurns)){
+      try{
+        const archivedRows = await readCachedMessages();
+        contextArchiveRows = contextSourceTail(archivedRows, requestedTurns);
+        contextArchiveTurns = requestedTurns;
+      }catch(error){
+        console.warn("Using loaded chat rows because full context recovery failed", error);
+      }
+    }
+    if (contextArchiveRows){
+      const mergedRows = new Map(contextArchiveRows.filter(message => !deletedKeys.has(msgKey(message.id))).map(message => [msgKey(message.id), message]));
+      loadedRows.forEach(message => mergedRows.set(msgKey(message.id), message));
+      contextRows = Array.from(mergedRows.values());
+    }
+    const messages = gatewayConversation(contextRows);
     if (attachments && attachments.length && messages.length){
       const latestHuman = sortedMessages().filter(m => m.from === "human").pop();
       messages[messages.length - 1] = {
